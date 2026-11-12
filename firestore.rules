@@ -1,5 +1,9 @@
-    // ===== Radici (incolla questo blocco DENTRO "match /databases/{database}/documents { ... }",
-    //       insieme alle regole che ci sono già per Nails & Makeup) =====
+rules_version = '2';
+// Regole di sicurezza del progetto Firebase "radici-app".
+// Da incollare in Firebase > Firestore Database > Regole, poi "Pubblica".
+service cloud.firestore {
+  match /databases/{database}/documents {
+
     match /saloni/{sid} {
       function staffSalone() {
         return request.auth != null &&
@@ -9,7 +13,7 @@
       allow read: if true;
       allow write: if staffSalone();
 
-      // chi può entrare nella dashboard: un documento admin/<UID>
+      // chi può entrare nella dashboard: un documento admin/<UID>, creato a mano nella console
       match /admin/{uid} {
         allow read: if request.auth != null && request.auth.uid == uid;
       }
@@ -34,9 +38,11 @@
           && request.resource.data.stato == 'annullata');
         allow delete: if staffSalone();
       }
-      // dati del cliente (nome, telefono): li vede e modifica solo lui, e il titolare li legge
+      // dati del cliente (nome, telefono, foto): li modifica solo lui, il titolare li legge
       match /clienti/{uid} {
         allow read: if staffSalone() || (request.auth != null && request.auth.uid == uid);
         allow write: if request.auth != null && request.auth.uid == uid;
       }
     }
+  }
+}

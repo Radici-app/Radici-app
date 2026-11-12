@@ -4,7 +4,7 @@ import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } from
 import { getFirestore, doc, getDoc, setDoc, collection, onSnapshot, writeBatch } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
 const SALONE = 'radici';
-const fbApp = initializeApp({ apiKey: 'AIzaSyC59ymVazp-_GIT5kI-O6HL0hLUi7KPvLc', authDomain: 'nailsendmakeup.firebaseapp.com', projectId: 'nailsendmakeup', storageBucket: 'nailsendmakeup.firebasestorage.app', messagingSenderId: '205109970124', appId: '1:205109970124:web:bab08c55d651b4a7842e69' });
+const fbApp = initializeApp({ apiKey: 'AIzaSyCUhd6pXSheUQ6gPhT5OfvprM5dYI2uxz4', authDomain: 'radici-app.firebaseapp.com', projectId: 'radici-app', storageBucket: 'radici-app.firebasestorage.app', messagingSenderId: '602201707324', appId: '1:602201707324:web:88d8681280de279b81c439' });
 const auth = getAuth(fbApp), db = getFirestore(fbApp);
 const SAL = doc(db, 'saloni', SALONE), colP = collection(db, 'saloni', SALONE, 'prenotazioni'), colB = collection(db, 'saloni', SALONE, 'busy'), colC = collection(db, 'saloni', SALONE, 'clienti');
 
