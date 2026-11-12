@@ -1,0 +1,42 @@
+    // ===== Radici (incolla questo blocco DENTRO "match /databases/{database}/documents { ... }",
+    //       insieme alle regole che ci sono già per Nails & Makeup) =====
+    match /saloni/{sid} {
+      function staffSalone() {
+        return request.auth != null &&
+          exists(/databases/$(database)/documents/saloni/$(sid)/admin/$(request.auth.uid));
+      }
+      // impostazioni del salone (servizi, orari, staff…): tutti leggono, solo il titolare modifica
+      allow read: if true;
+      allow write: if staffSalone();
+
+      // chi può entrare nella dashboard: un documento admin/<UID>
+      match /admin/{uid} {
+        allow read: if request.auth != null && request.auth.uid == uid;
+      }
+      // orari occupati, senza dati personali: servono all'app per mostrare gli orari liberi
+      match /busy/{id} {
+        allow read: if true;
+        allow create: if request.auth != null
+          && request.resource.data.keys().hasOnly(['data','ini','fine','staff']);
+        allow update: if staffSalone();
+        allow delete: if staffSalone() || (request.auth != null
+          && get(/databases/$(database)/documents/saloni/$(sid)/prenotazioni/$(id)).data.uid == request.auth.uid);
+      }
+      // prenotazioni: il cliente crea e vede solo le sue, può solo annullarle; il titolare gestisce tutto
+      match /prenotazioni/{id} {
+        allow read: if staffSalone() || (request.auth != null && resource.data.uid == request.auth.uid);
+        allow create: if staffSalone() || (request.auth != null
+          && request.resource.data.uid == request.auth.uid
+          && request.resource.data.stato == 'ok');
+        allow update: if staffSalone() || (request.auth != null
+          && resource.data.uid == request.auth.uid
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['stato','annullataIl','annullataDa'])
+          && request.resource.data.stato == 'annullata');
+        allow delete: if staffSalone();
+      }
+      // dati del cliente (nome, telefono): li vede e modifica solo lui, e il titolare li legge
+      match /clienti/{uid} {
+        allow read: if staffSalone() || (request.auth != null && request.auth.uid == uid);
+        allow write: if request.auth != null && request.auth.uid == uid;
+      }
+    }

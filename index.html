@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Radici – Gestione</title>
+<meta name="robots" content="noindex">
+<link rel="icon" type="image/png" href="icon-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600&family=Hanken+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#F5F4EE;--surf:#fff;--ink:#23271A;--mute:#6B705C;--line:#E2E2D5;--soft:#ECEEE2;--head:#2E3420;--acc:#8E9A55;--pri:#4F5A2A;--onpri:#fff;--wait:#C0392B;--ok:#2F7D5B;--side:#2E3420;--onside:#E4E9CF;
+ --sh:0 1px 2px rgba(46,52,32,.05),0 12px 24px -18px rgba(46,52,32,.45);color-scheme:light}
+@media(prefers-color-scheme:dark){:root{--bg:#14160F;--surf:#1E2117;--ink:#EEF0E4;--mute:#AEB39B;--line:#33382A;--soft:#272B1E;--head:#E4E9CF;--acc:#B5C27A;--pri:#B5C27A;--onpri:#1B1E12;--wait:#FF8A80;--ok:#6FCF9F;--side:#0E100A;--onside:#E4E9CF;--sh:0 1px 2px rgba(0,0,0,.3),0 12px 24px -18px rgba(0,0,0,.7);color-scheme:dark}}
+*,*::before,*::after{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--ink);font:400 15px/1.5 "Hanken Grotesk",system-ui,sans-serif;-webkit-font-smoothing:antialiased;font-variant-numeric:tabular-nums}
+h1,h2,h3{font-family:"Fraunces",Georgia,serif;font-weight:400;color:var(--head);margin:0;letter-spacing:-.01em}
+button{font:inherit;color:inherit;cursor:pointer}
+[hidden]{display:none!important}
+input,select,textarea{font:inherit;color:var(--ink);background:var(--surf);border:1.5px solid var(--line);border-radius:12px;padding:10px 12px;width:100%}
+input:focus,select:focus,textarea:focus{outline:none;border-color:var(--acc)}
+textarea{min-height:80px;resize:vertical}
+label{display:block;font-size:.84rem;font-weight:500;color:var(--mute)}
+label>input,label>select,label>textarea{margin-top:4px}
+/* struttura */
+#app{display:grid;grid-template-columns:240px minmax(0,1fr);min-height:100vh}
+aside{background:var(--side);color:var(--onside);padding:18px 12px;position:sticky;top:0;height:100vh;overflow:auto}
+.brand{display:flex;align-items:center;gap:10px;padding:4px 8px 18px}
+.brand .lg{width:40px;height:40px;border-radius:50%;background:var(--acc);display:grid;place-items:center;font:600 1.1rem "Fraunces",serif;color:#fff}
+.brand b{display:block;font:600 1.2rem/1 "Fraunces",serif}.brand span{font-size:.72rem;opacity:.7;letter-spacing:.1em;text-transform:uppercase}
+nav button{display:flex;align-items:center;gap:10px;width:100%;padding:10px 12px;border:0;background:none;border-radius:12px;color:var(--onside);opacity:.78;text-align:left;font-weight:600}
+nav button svg{width:20px;height:20px}
+nav button[aria-current="true"]{background:rgba(255,255,255,.1);opacity:1;color:#fff}
+nav hr{border:0;border-top:1px solid rgba(255,255,255,.12);margin:10px 4px}
+main{padding:22px 28px 60px;min-width:0}
+.bar{display:flex;align-items:center;gap:12px;margin-bottom:16px;flex-wrap:wrap}
+.bar h1{font-size:2rem;flex:1}
+#menuBtn{display:none}
+@media(max-width:860px){#app{grid-template-columns:1fr}aside{position:fixed;inset:0 auto 0 0;width:260px;z-index:30;transform:translateX(-100%);transition:transform .2s}aside.open{transform:none;box-shadow:0 0 0 100vmax rgba(0,0,0,.4)}#menuBtn{display:inline-flex}main{padding:16px 14px 60px}}
+.card{background:var(--surf);border:1.5px solid var(--line);border-radius:20px;padding:16px;box-shadow:var(--sh);margin-bottom:14px}
+.card h3{font-size:1.25rem;margin-bottom:10px}
+.grid2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.grid3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+@media(max-width:620px){.grid2,.grid3{grid-template-columns:1fr}}
+.bt{display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:9px 16px;border-radius:999px;border:1.5px solid var(--line);background:var(--surf);font-weight:700;white-space:nowrap}
+.bt.pri{background:var(--pri);border-color:var(--pri);color:var(--onpri)}
+.bt.no{color:var(--wait);border-color:var(--wait);background:none}
+.bt.sm{padding:6px 11px;font-size:.84rem}
+.bt:disabled{opacity:.5}
+.hint{color:var(--mute);margin:0 0 12px;font-size:.92rem}
+.err{color:var(--wait);font-weight:600;min-height:1.3em;margin:6px 0}
+.salva{position:sticky;bottom:0;display:flex;gap:10px;justify-content:flex-end;align-items:center;padding:12px 0;background:linear-gradient(transparent,var(--bg) 35%);flex-wrap:wrap}
+.salva span{flex:1;color:var(--mute);font-size:.9rem}
+/* login */
+#login{max-width:400px;margin:12vh auto;padding:0 16px}
+/* servizi */
+.cat{border:1.5px solid var(--line);border-radius:18px;background:var(--surf);margin-bottom:12px;overflow:hidden}
+.cath{display:flex;align-items:center;gap:10px;padding:12px 14px;background:var(--soft);flex-wrap:wrap}
+.cath svg{width:26px;height:26px;color:var(--acc)}
+.cath input{flex:1;min-width:140px;font-weight:700}
+.cath select{width:auto}
+.srow{display:grid;grid-template-columns:34px minmax(0,2fr) minmax(0,1fr) 90px auto;gap:8px;align-items:center;padding:10px 14px;border-top:1px solid var(--line)}
+.srow svg{width:26px;height:26px;color:var(--acc)}
+.srow .az{display:flex;gap:4px}
+.srow .descr{grid-column:2/-1}
+.srow.nas{opacity:.5}
+.ib{width:32px;height:32px;border-radius:10px;border:1.5px solid var(--line);background:var(--surf);display:grid;place-items:center;font-weight:700;padding:0}
+.ib.no{color:var(--wait)}
+@media(max-width:700px){.srow{grid-template-columns:30px minmax(0,1fr) 84px}.srow>input[data-k$='.nome']{grid-column:2/-1}.srow>input[data-k$='.prezzo']{grid-column:1/3}.srow .az{grid-column:1/-1;justify-content:flex-end;flex-wrap:wrap}.srow .descr{grid-column:1/-1}}
+/* orari */
+.gg{display:grid;grid-template-columns:110px minmax(0,1fr);gap:10px;align-items:start;padding:10px 0;border-top:1px solid var(--line)}
+.gg:first-child{border-top:0}
+.fasce{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.fa{display:flex;gap:4px;align-items:center;background:var(--soft);border-radius:12px;padding:4px 6px}
+.fa input{width:96px;padding:6px 8px}
+.chk{display:flex;align-items:center;gap:8px;font-weight:600;color:var(--ink)}
+.chk input{width:18px;height:18px;accent-color:var(--pri)}
+/* agenda */
+.ag{display:grid;background:var(--surf);border:1.5px solid var(--line);border-radius:18px;overflow:auto;box-shadow:var(--sh)}
+.ag .hd{position:sticky;top:0;background:var(--soft);padding:8px;text-align:center;font-weight:700;border-left:1px solid var(--line);z-index:1}
+.ag .hd:first-child{border-left:0}
+.ag .col{position:relative;border-left:1px solid var(--line);background-image:linear-gradient(var(--line) 1px,transparent 1px)}
+.ag .ore{position:relative}
+.ag .ore span{position:absolute;right:6px;transform:translateY(-.6em);font-size:.75rem;color:var(--mute)}
+.ev{position:absolute;left:3px;right:3px;border-radius:10px;padding:3px 7px;background:#E6EAD5;border:1.5px solid var(--acc);color:#2E3420;font-size:.8rem;line-height:1.25;overflow:hidden;cursor:pointer;text-align:left}
+.ev small{display:block;opacity:.8}
+.ev.man{background:#EFE6D6;border-color:#B08A4E}
+.chiuso{background:repeating-linear-gradient(135deg,transparent 0 6px,rgba(0,0,0,.05) 6px 12px)}
+.li{display:flex;gap:12px;align-items:center;padding:10px 0;border-top:1px solid var(--line)}
+.li:first-child{border-top:0}
+.li .t{flex:1;min-width:0}
+.li .t small{display:block;color:var(--mute)}
+.av{width:38px;height:38px;border-radius:50%;background:var(--soft);color:var(--pri);display:grid;place-items:center;font-weight:700;flex:none;overflow:hidden}
+.av img{width:100%;height:100%;object-fit:cover}
+/* finestre */
+.modal{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:50;display:flex;align-items:center;justify-content:center;padding:16px}
+.modal>div{background:var(--surf);border-radius:22px;padding:20px;width:100%;max-width:520px;max-height:92vh;overflow:auto}
+.modal h3{font-size:1.5rem;margin-bottom:10px}
+.toast{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);background:var(--head);color:var(--bg);padding:10px 18px;border-radius:999px;font-weight:600;z-index:90}
+.svl{max-height:220px;overflow:auto;border:1.5px solid var(--line);border-radius:12px;padding:6px 10px}
+.svl label{display:flex;gap:8px;align-items:center;color:var(--ink);font-weight:500;padding:3px 0}
+.svl input{width:16px;height:16px}
+.stat{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-bottom:14px}
+.stat div{background:var(--surf);border:1.5px solid var(--line);border-radius:16px;padding:12px}
+.stat b{display:block;font:600 1.6rem "Fraunces",serif;color:var(--head)}
+.stat span{color:var(--mute);font-size:.85rem}
+@media(max-width:620px){.stat{grid-template-columns:repeat(2,minmax(0,1fr))}}
+</style>
+</head>
+<body>
+<div id="login" hidden>
+ <div class="card">
+  <div class="brand" style="padding:0 0 12px"><div class="lg" style="color:#fff">R</div><div><b>Radici</b><span style="color:var(--mute)">Gestione</span></div></div>
+  <label>Email<input id="lMail" type="email" autocomplete="username"></label>
+  <label style="margin-top:10px">Password<input id="lPass" type="password" autocomplete="current-password"></label>
+  <p class="err" id="lErr"></p>
+  <button class="bt pri" id="lIn" style="width:100%">Entra</button>
+ </div>
+</div>
+<div id="attesa" style="text-align:center;padding:30vh 0;color:var(--mute)">Caricamento…</div>
+
+<div id="app" hidden>
+ <aside id="side">
+  <div class="brand"><div class="lg">R</div><div><b id="sNome">Radici</b><span>Gestione</span></div></div>
+  <nav id="nav">
+   <button data-v="agenda"><svg data-i="calendario"></svg>Agenda</button>
+   <button data-v="clienti"><svg data-i="utente"></svg>Clienti</button>
+   <hr>
+   <button data-v="servizi"><svg data-i="listino"></svg>Servizi</button>
+   <button data-v="orari"><svg data-i="calendarioPiu"></svg>Orari</button>
+   <button data-v="chiusure"><svg data-i="scudo"></svg>Giorni di chiusura</button>
+   <button data-v="staff"><svg data-i="forbici"></svg>Staff</button>
+   <button data-v="negozio"><svg data-i="negozio"></svg>Negozio</button>
+   <button data-v="regole"><svg data-i="carta"></svg>Regole prenotazione</button>
+   <hr>
+   <button id="esci"><svg data-i="esci"></svg>Esci</button>
+  </nav>
+ </aside>
+ <main>
+  <div class="bar"><button class="bt" id="menuBtn">☰ Menu</button><h1 id="titolo">Agenda</h1><div id="azioni"></div></div>
+  <div id="vista"></div>
+ </main>
+</div>
+<div class="modal" id="mod" hidden><div id="modIn"></div></div>
+
+<script src="seed.js"></script>
+<script src="icone.js"></script>
+<script type="module" src="dash.js"></script>
+</body>
+</html>
