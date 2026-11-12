@@ -42,7 +42,7 @@ onAuthStateChanged(auth, async u => {
   if (u && !ok) { $('lErr').textContent = 'Questo account non ha accesso alla gestione di ' + C.nome + '.'; await signOut(auth); return; }
   $('login').hidden = !!u; $('app').hidden = !u;
   if (!u) return;
-  unsub.push(onSnapshot(SAL, s => { C = Object.assign(cp(window.RADICI_SEED), s.exists() ? s.data() : {}); $('sNome').textContent = C.nome; if (!sporco) { D = cp(C); render(); } }));
+  unsub.push(onSnapshot(SAL, s => { C = Object.assign(cp(window.RADICI_SEED), s.exists() ? window.fasceDaDb(s.data()) : {}); $('sNome').textContent = C.nome; if (!sporco) { D = cp(C); render(); } }));
   unsub.push(onSnapshot(colP, s => { P = s.docs.map(d => d.data()); if (['agenda', 'clienti'].includes(vista) && $('mod').hidden) render(); }));
   unsub.push(onSnapshot(colC, s => { CL = s.docs.map(d => Object.assign({ uid: d.id }, d.data())); if (vista === 'clienti') render(); }));
 });
@@ -75,8 +75,8 @@ const segna = () => { sporco = true; if ($('stato')) $('stato').textContent = 'M
 async function salva() {
   const er = valida(D); if (er) { toast(er); return; }
   $('salva').disabled = true;
-  try { D.agg = Date.now(); await setDoc(SAL, D); sporco = false; C = cp(D); toast('Salvato ✓'); render(); }
-  catch (e) { toast(e.code === 'permission-denied' ? 'Permesso negato: controlla le regole di Firebase.' : 'Salvataggio non riuscito. Riprova.'); $('salva').disabled = false; }
+  try { D.agg = Date.now(); await setDoc(SAL, window.fasceVersoDb(D)); sporco = false; C = cp(D); toast('Salvato ✓'); render(); }
+  catch (e) { console.error(e); toast(e.code === 'permission-denied' ? 'Permesso negato: controlla le regole di Firebase e l’accesso admin.' : 'Salvataggio non riuscito (' + (e.code || e.message || 'errore') + ').'); $('salva').disabled = false; }
 }
 function valida(d) {
   for (const g of ORD) for (const f of d.orari[g] || []) if (!(f[1] > f[0])) return GIORNI[g] + ': l’orario di chiusura deve essere dopo l’apertura.';
