@@ -1,12 +1,12 @@
 /* Radici – dashboard del titolare */
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
-import { getFirestore, doc, getDoc, setDoc, deleteDoc, collection, onSnapshot, writeBatch } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
+import { getFirestore, doc, getDoc, setDoc, deleteDoc, collection, onSnapshot, writeBatch, deleteField } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
 const SALONE = 'radici';
 const fbApp = initializeApp({ apiKey: 'AIzaSyCUhd6pXSheUQ6gPhT5OfvprM5dYI2uxz4', authDomain: 'radici-app.firebaseapp.com', projectId: 'radici-app', storageBucket: 'radici-app.firebasestorage.app', messagingSenderId: '602201707324', appId: '1:602201707324:web:88d8681280de279b81c439' });
 const auth = getAuth(fbApp), db = getFirestore(fbApp);
-const SAL = doc(db, 'saloni', SALONE), colP = collection(db, 'saloni', SALONE, 'prenotazioni'), colB = collection(db, 'saloni', SALONE, 'busy'), colC = collection(db, 'saloni', SALONE, 'clienti'), colA = collection(db, 'saloni', SALONE, 'avvisi'), colR = collection(db, 'saloni', SALONE, 'rubrica'), colG = collection(db, 'saloni', SALONE, 'galleria'), colGF = collection(db, 'saloni', SALONE, 'galleriaFoto');
+const SAL = doc(db, 'saloni', SALONE), colP = collection(db, 'saloni', SALONE, 'prenotazioni'), colB = collection(db, 'saloni', SALONE, 'busy'), colC = collection(db, 'saloni', SALONE, 'clienti'), colA = collection(db, 'saloni', SALONE, 'avvisi'), colR = collection(db, 'saloni', SALONE, 'rubrica'), colG = collection(db, 'saloni', SALONE, 'galleria'), colGF = collection(db, 'saloni', SALONE, 'galleriaFoto'), colF = collection(db, 'saloni', SALONE, 'punti');
 
 const $ = id => document.getElementById(id);
 const esc = t => String(t ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -30,7 +30,7 @@ function conferma(t, p, ok = 'Sì', no = 'No') { return new Promise(r => { fines
 const numWa = t => { const d = String(t).replace(/\D/g, ''); return String(t).trim().startsWith('+') || d.startsWith('39') && d.length > 10 ? d : '39' + d; };
 
 /* ---------- stato ---------- */
-let C = cp(window.RADICI_SEED), D = null, sporco = false, P = [], CL = [], BK = [], AV = [], RB = [], GA = [], vista = 'agenda', giorno = iso(new Date()), filtroCl = '', soloRitardatari = false;
+let C = cp(window.RADICI_SEED), D = null, sporco = false, P = [], CL = [], BK = [], AV = [], RB = [], GA = [], FM = [], vista = 'agenda', giorno = iso(new Date()), filtroCl = '', soloRitardatari = false;
 const unsub = [];
 
 /* ---------- accesso ---------- */
@@ -43,12 +43,14 @@ onAuthStateChanged(auth, async u => {
   $('login').hidden = !!u; $('app').hidden = !u;
   if (!u) return;
   unsub.push(onSnapshot(SAL, s => { C = Object.assign(cp(window.RADICI_SEED), s.exists() ? window.fasceDaDb(s.data()) : {}); $('sNome').textContent = C.nome; if (!sporco) { D = cp(C); render(); } }));
-  const vive = ['agenda', 'clienti', 'ritardatari', 'statistiche'], ridisegna = () => { if (vive.includes(vista) && $('mod').hidden && !(document.activeElement && document.activeElement.matches('input[type=search],#cQ,#sQ'))) render(); };
+  const vive = ['agenda', 'clienti', 'ritardatari', 'statistiche'], fermo = () => document.activeElement && (document.activeElement.matches('input[type=search],#cQ,#sQ') || ($('vista').contains(document.activeElement) && document.activeElement.matches('input,textarea,select')));
+  const ridisegna = () => { if ((vive.includes(vista) || (vista === 'fidelity' && ['giornata', 'clienti'].includes(fTab))) && $('mod').hidden && !fermo()) render(); };
   unsub.push(onSnapshot(colP, s => { P = s.docs.map(d => d.data()); ridisegna(); collega(); }));
   unsub.push(onSnapshot(colC, s => { CL = s.docs.map(d => Object.assign({ uid: d.id }, d.data())); ridisegna(); collega(); }));
   unsub.push(onSnapshot(colB, s => { BK = s.docs.map(d => Object.assign({ id: d.id }, d.data())); if (vista === 'agenda' && $('mod').hidden) render(); }));
   unsub.push(onSnapshot(colG, s => { GA = s.docs.map(d => Object.assign({ id: d.id }, d.data())); if (vista === 'galleria' && $('mod').hidden) render(); }, () => {}));
   unsub.push(onSnapshot(colR, s => { RB = s.docs.map(d => Object.assign({ id: d.id }, d.data())); ridisegna(); }, () => {}));
+  unsub.push(onSnapshot(colF, s => { FM = s.docs.map(d => Object.assign({ id: d.id }, d.data())); ridisegna(); }, () => {}));
   unsub.push(onSnapshot(colA, s => { AV = s.docs.map(d => d.data()); if (vista === 'comunicazioni') render(); }, () => {}));
 });
 $('lIn').onclick = async () => { $('lErr').textContent = ''; try { await signInWithEmailAndPassword(auth, $('lMail').value.trim(), $('lPass').value); } catch (e) { $('lErr').textContent = e.code === 'auth/too-many-requests' ? 'Troppi tentativi, riprova più tardi.' : 'Email o password non corretti.'; } };
@@ -56,7 +58,7 @@ $('lPass').onkeydown = e => { if (e.key === 'Enter') $('lIn').click(); };
 $('esci').onclick = () => signOut(auth);
 
 /* ---------- navigazione ---------- */
-const TITOLI = { galleria: 'Galleria', agenda: 'Agenda', clienti: 'Clienti', ritardatari: 'Ritardatari', statistiche: 'Statistiche', comunicazioni: 'Comunicazioni', servizi: 'Servizi', orari: 'Orari', chiusure: 'Giorni di chiusura', staff: 'Staff', negozio: 'Negozio', regole: 'Regole di prenotazione' };
+const TITOLI = { fidelity: 'Fidelity Card', galleria: 'Galleria', agenda: 'Agenda', clienti: 'Clienti', ritardatari: 'Ritardatari', statistiche: 'Statistiche', comunicazioni: 'Comunicazioni', servizi: 'Servizi', orari: 'Orari', chiusure: 'Giorni di chiusura', staff: 'Staff', negozio: 'Negozio', regole: 'Regole di prenotazione' };
 const IMPOSTAZIONI = ['servizi', 'orari', 'chiusure', 'staff', 'negozio', 'regole'];
 $('nav').querySelectorAll('[data-v]').forEach(b => b.onclick = async () => {
   if (sporco && !await conferma('Modifiche non salvate', 'Vuoi uscire senza salvare?', 'Esci senza salvare', 'Resta')) return;
@@ -71,8 +73,8 @@ function render() {
   $('titolo').textContent = TITOLI[vista];
   $('nav').querySelectorAll('[data-v]').forEach(b => b.setAttribute('aria-current', b.dataset.v === vista));
   $('azioni').innerHTML = '';
-  ({ galleria: vGalleria, agenda: vAgenda, clienti: vClienti, ritardatari: vRitardatari, statistiche: vStatistiche, comunicazioni: vComunicazioni, servizi: vServizi, orari: vOrari, chiusure: vChiusure, staff: vStaff, negozio: vNegozio, regole: vRegole })[vista]();
-  if (IMPOSTAZIONI.includes(vista)) $('vista').insertAdjacentHTML('beforeend', `<div class="salva"><span id="stato">${sporco ? 'Modifiche non salvate' : ''}</span><button class="bt" id="annulla">Annulla modifiche</button><button class="bt pri" id="salva">Salva</button></div>`);
+  ({ fidelity: vFidelity, galleria: vGalleria, agenda: vAgenda, clienti: vClienti, ritardatari: vRitardatari, statistiche: vStatistiche, comunicazioni: vComunicazioni, servizi: vServizi, orari: vOrari, chiusure: vChiusure, staff: vStaff, negozio: vNegozio, regole: vRegole })[vista]();
+  if (IMPOSTAZIONI.includes(vista) || (vista === 'fidelity' && ['impostazioni', 'regolamento'].includes(fTab))) $('vista').insertAdjacentHTML('beforeend', `<div class="salva"><span id="stato">${sporco ? 'Modifiche non salvate' : ''}</span><button class="bt" id="annulla">Annulla modifiche</button><button class="bt pri" id="salva">Salva</button></div>`);
   window.riempiIcone($('vista'));
   if ($('salva')) { $('salva').onclick = salva; $('annulla').onclick = () => { D = cp(C); sporco = false; render(); }; }
 }
@@ -88,6 +90,12 @@ function valida(d) {
   for (const s of d.servizi) { if (!s.nome.trim()) return 'Ogni servizio deve avere un nome.'; if (!(s.durata >= 5)) return '“' + s.nome + '”: durata di almeno 5 minuti.'; }
   for (const c of d.chiusure) if (!c.da || !c.a || c.a < c.da) return 'Controlla le date delle chiusure.';
   if (!d.staff.length) return 'Serve almeno un operatore.';
+  if (d.fidelity) { const f = d.fidelity;
+    if (!(f.validitaMesi >= 1)) return 'Fidelity Card: i punti devono valere almeno 1 mese.';
+    if (f.scaglioni.some(x => !(x.da >= 0) || !(x.punti >= 0))) return 'Fidelity Card: controlla gli scaglioni (importi e punti).';
+    if (f.bonus.some(x => !String(x.nome).trim() || !(x.punti >= 0))) return 'Fidelity Card: ogni bonus deve avere nome e punti.';
+    if (f.premi.some(x => !String(x.nome).trim() || !(x.punti >= 1))) return 'Fidelity Card: ogni premio deve avere nome e punti.';
+    f.scaglioni.sort((a, b) => a.da - b.da); f.premi.sort((a, b) => a.punti - b.punti); }
   return '';
 }
 /* input generici: data-k="percorso.nel.oggetto" e data-n per i numeri */
@@ -585,4 +593,172 @@ function vGalleria() {
   const scambia = async (i, j) => { const a = foto[i], b = foto[j]; if (!a || !b) return; const w = writeBatch(db), oa = a.ordine || i, ob = b.ordine || j; w.update(doc(colG, a.id), { ordine: ob === oa ? j : ob }); w.update(doc(colG, b.id), { ordine: ob === oa ? i : oa }); try { await w.commit(); } catch (e) { toast('Non riuscito.'); } };
   $('vista').querySelectorAll('[data-gsu]').forEach(b => b.onclick = () => scambia(+b.dataset.gsu, +b.dataset.gsu - 1));
   $('vista').querySelectorAll('[data-ggiu]').forEach(b => b.onclick = () => scambia(+b.dataset.ggiu, +b.dataset.ggiu + 1));
+}
+
+/* ---------- FIDELITY CARD: conferma presenze per giornata, saldo dei clienti, impostazioni e regolamento ---------- */
+let fTab = 'giornata', fGiorno = iso(new Date()), fQ = '';
+const fBozza = {};   /* importi e bonus scritti ma non ancora confermati, per appuntamento */
+const FIDT = { giornata: 'Conferma giornata', clienti: 'Punti clienti', impostazioni: 'Impostazioni', regolamento: 'Regolamento' };
+const fidC = () => Object.assign(cp(window.RADICI_SEED.fidelity), C.fidelity || {});
+const fidD = () => { if (!D.fidelity) D.fidelity = cp(window.RADICI_SEED.fidelity); return D.fidelity; };
+const contaApp = b => b.uid && b.uid !== 'manuale';
+const movDi = uid => FM.filter(m => m.uid === uid);
+const nomeCl = uid => { const c = CL.find(x => x.uid === uid); return c ? ((c.nome || '') + ' ' + (c.cogn || '')).trim() || c.mail || 'Cliente' : 'Cliente'; };
+const saldoDi = uid => window.FID.saldo(movDi(uid), fidC(), iso(new Date()));
+const puntiTxt = n => (n > 0 ? '+' : '') + n + (Math.abs(n) === 1 ? ' punto' : ' punti');
+function vFidelity() {
+  const f = fidC();
+  $('vista').innerHTML = `<div class="optabs">${Object.entries(FIDT).map(([k, t]) => `<button data-ft="${k}" aria-pressed="${k === fTab}">${t}</button>`).join('')}</div>
+   ${!f.attiva && fTab !== 'impostazioni' ? '<p class="hint" style="color:var(--wait)">La Fidelity Card è disattivata: i clienti non la vedono nell’app. Si attiva da Impostazioni.</p>' : ''}<div id="fCorpo"></div>`;
+  $('vista').querySelectorAll('[data-ft]').forEach(b => b.onclick = async () => {
+    if (sporco && !await conferma('Modifiche non salvate', 'Vuoi uscire senza salvare?', 'Esci senza salvare', 'Resta')) return;
+    sporco = false; D = cp(C); fTab = b.dataset.ft; render();
+  });
+  ({ giornata: fGiornata, clienti: fClienti, impostazioni: fImpostazioni, regolamento: fRegolamento })[fTab]();
+}
+
+/* --- Conferma giornata: chi è venuto prende i punti dello scaglione e i bonus spuntati --- */
+function fGiornata() {
+  const f = fidC(), oggiK = iso(new Date());
+  const L = attive().filter(b => b.data === fGiorno).sort((a, b) => a.ini - b.ini);
+  /* giorni passati (ultimi 60) con appuntamenti di clienti dell'app ancora da confermare */
+  const da60 = iso(new Date(Date.now() - 60 * 864e5));
+  const giorniAperti = [...new Set(attive().filter(b => b.data <= oggiK && b.data >= da60 && contaApp(b) && !b.presenza).map(b => b.data))].sort().reverse();
+  const conf = L.filter(b => b.presenza === 'si'), dati = FM.filter(m => L.some(b => b.id === m.pren)).reduce((a, m) => a + m.punti, 0);
+  const sposta = n => { const d = new Date(fGiorno + 'T12:00'); d.setDate(d.getDate() + n); fGiorno = iso(d); render(); };
+  $('fCorpo').innerHTML = `<p class="hint">A fine giornata segna chi è venuto: i punti si calcolano dall’importo speso (puoi correggerlo) secondo gli scaglioni, più i bonus che spunti. Solo i clienti registrati nell’app ricevono punti.</p>
+   <div class="bar"><button class="bt sm" id="fPrima">‹</button><input type="date" id="fG" value="${fGiorno}" style="max-width:180px"><button class="bt sm" id="fDopo">›</button><button class="bt sm" id="fOggi">Oggi</button><b style="font:400 1.25rem 'Fraunces',serif;color:var(--head);text-transform:capitalize">${esc(dataLunga(fGiorno))}</b></div>
+   ${giorniAperti.length ? `<div class="card" style="padding:12px 14px"><b style="display:block;margin-bottom:6px">Giorni da confermare</b><div class="optabs" style="margin:0;padding:0;flex-wrap:wrap">${giorniAperti.slice(0, 20).map(k => `<button class="sm" data-fg="${k}" aria-pressed="${k === fGiorno}" style="padding:6px 12px">${new Date(k + 'T12:00').toLocaleDateString('it-IT', { weekday: 'short', day: 'numeric', month: 'short' })} <small>${attive().filter(b => b.data === k && contaApp(b) && !b.presenza).length}</small></button>`).join('')}</div></div>` : ''}
+   <div class="stat"><div><b>${L.length}</b><span>appuntamenti</span></div><div><b>${conf.length}</b><span>venuti</span></div><div><b>${L.filter(b => b.presenza === 'no').length}</b><span>non venuti</span></div><div><b>${dati}</b><span>punti assegnati</span></div></div>
+   ${L.length ? L.map(fRiga).join('') : '<div class="card"><p class="hint" style="margin:0">Nessun appuntamento in questo giorno.</p></div>'}`;
+  $('fPrima').onclick = () => sposta(-1); $('fDopo').onclick = () => sposta(1); $('fOggi').onclick = () => { fGiorno = oggiK; render(); };
+  $('fG').onchange = e => { if (e.target.value) { fGiorno = e.target.value; render(); } };
+  $('fCorpo').querySelectorAll('[data-fg]').forEach(b => b.onclick = () => { fGiorno = b.dataset.fg; render(); });
+  $('fCorpo').querySelectorAll('[data-fimp]').forEach(el => el.oninput = () => {
+    const id = el.dataset.fimp, v = parseFloat(String(el.value).replace(',', '.')); (fBozza[id] = fBozza[id] || {}).importo = el.value;
+    $('fp_' + id).textContent = puntiTxt(window.FID.puntiPer(isNaN(v) ? 0 : v, f));
+  });
+  $('fCorpo').querySelectorAll('[data-fbon]').forEach(el => el.onchange = () => { const [id, bid] = el.dataset.fbon.split('|'); const z = fBozza[id] = fBozza[id] || {}; z.bonus = z.bonus || {}; z.bonus[bid] = el.checked; });
+  $('fCorpo').querySelectorAll('[data-fsi]').forEach(b => b.onclick = () => segnaPresenza(b.dataset.fsi, 'si'));
+  $('fCorpo').querySelectorAll('[data-fno]').forEach(b => b.onclick = () => segnaPresenza(b.dataset.fno, 'no'));
+  $('fCorpo').querySelectorAll('[data-freset]').forEach(b => b.onclick = () => segnaPresenza(b.dataset.freset, ''));
+  $('fCorpo').querySelectorAll('[data-fcl]').forEach(b => b.onclick = () => schedaPunti(b.dataset.fcl));
+}
+function fRiga(b) {
+  const f = fidC(), app = contaApp(b), z = fBozza[b.id] || {};
+  const imp = z.importo !== undefined ? z.importo : (b.importo !== undefined ? b.importo : prezzoNum(b.prezzo));
+  const impN = parseFloat(String(imp).replace(',', '.')) || 0;
+  const mv = FM.filter(m => m.pren === b.id), vis = mv.find(m => m.tipo === 'visita'), bonusDati = mv.filter(m => m.tipo === 'bonus');
+  const st = b.presenza === 'si' ? `<span class="fst si">✓ Venuto · ${puntiTxt(mv.reduce((a, m) => a + m.punti, 0))}</span>` : b.presenza === 'no' ? '<span class="fst no">✗ Non venuto</span>' : '<span class="fst">Da confermare</span>';
+  const bon = (f.bonus || []).map(x => {
+    const preso = bonusDati.some(m => m.bonus === x.id), spunt = z.bonus && z.bonus[x.id] !== undefined ? z.bonus[x.id] : preso;
+    const pieno = x.maxMese && window.FID.usiMese(FM, b.uid, x.id, b.data, 'b_' + b.id + '_' + x.id) >= x.maxMese;
+    return `<label class="fbon${pieno && !preso ? ' off' : ''}"><input type="checkbox" data-fbon="${b.id}|${esc(x.id)}" ${spunt ? 'checked' : ''} ${pieno && !preso ? 'disabled' : ''}>${esc(x.nome)} <b>+${x.punti}</b>${pieno && !preso ? ' <small>già dato questo mese</small>' : ''}</label>`;
+  }).join('');
+  return `<div class="card friga${b.presenza ? ' ' + (b.presenza === 'si' ? 'ok' : 'ko') : ''}">
+    <div class="fte">${avatar({ nome: b.nome + ' ' + (b.cogn || ''), foto: (CL.find(c => c.uid === b.uid) || {}).foto })}<div style="flex:1;min-width:0"><b>${esc(b.nome)} ${esc(b.cogn || '')}</b>${app ? ` <button class="lnk" data-fcl="${esc(b.uid)}">${saldoDi(b.uid).saldo} punti</button>` : ' <span class="tag">non registrato</span>'}<small>${hm(b.ini)} · ${esc(b.staffNome || '')} · ${esc(b.servizi.map(x => x.nome).join(', '))}</small></div>${st}</div>
+    ${app ? `<div class="fimp"><label>Speso €<input inputmode="decimal" data-fimp="${b.id}" value="${esc(imp)}"></label><span class="fpt" id="fp_${b.id}">${puntiTxt(window.FID.puntiPer(impN, f))}</span></div>${bon ? `<div class="fbons">${bon}</div>` : ''}` : '<p class="hint" style="margin:8px 0 0">Non ha l’app: puoi segnare la presenza, ma non riceve punti.</p>'}
+    <div class="faz">${b.presenza ? `<button class="bt sm" data-freset="${b.id}">↺ Da confermare</button>` : ''}<button class="bt sm no" data-fno="${b.id}" ${b.presenza === 'no' ? 'disabled' : ''}>✗ Non venuto</button><button class="bt sm pri" data-fsi="${b.id}">${b.presenza === 'si' ? 'Aggiorna punti' : '✓ Venuto'}</button></div></div>`;
+}
+async function segnaPresenza(id, val) {
+  const b = P.find(x => x.id === id); if (!b) return;
+  const f = fidC(), z = fBozza[id] || {}, w = writeBatch(db), mv = FM.filter(m => m.pren === id), ora = Date.now();
+  if (!val) { w.update(doc(colP, id), { presenza: deleteField(), confermataIl: deleteField() }); mv.forEach(m => w.delete(doc(colF, m.id))); }
+  else if (val === 'no') { w.update(doc(colP, id), { presenza: 'no', confermataIl: ora }); mv.forEach(m => w.delete(doc(colF, m.id))); }
+  else {
+    const raw = z.importo !== undefined ? z.importo : (b.importo !== undefined ? b.importo : prezzoNum(b.prezzo)), imp = Math.max(0, parseFloat(String(raw).replace(',', '.')) || 0);
+    w.update(doc(colP, id), { presenza: 'si', confermataIl: ora, importo: imp });
+    if (contaApp(b)) {
+      const p = window.FID.puntiPer(imp, f), vid = 'v_' + id;
+      if (p > 0) w.set(doc(colF, vid), { id: vid, uid: b.uid, data: b.data, ts: ora, tipo: 'visita', punti: p, importo: imp, pren: id, nota: b.servizi.map(x => x.nome).join(', ') });
+      else if (mv.some(m => m.id === vid)) w.delete(doc(colF, vid));
+      (f.bonus || []).forEach(x => {
+        const bid = 'b_' + id + '_' + x.id, gia = mv.some(m => m.id === bid), vuole = z.bonus && z.bonus[x.id] !== undefined ? z.bonus[x.id] : gia;
+        if (vuole && !gia) w.set(doc(colF, bid), { id: bid, uid: b.uid, data: b.data, ts: ora, tipo: 'bonus', bonus: x.id, punti: x.punti, pren: id, nota: x.nome });
+        if (!vuole && gia) w.delete(doc(colF, bid));
+      });
+    }
+  }
+  try { await w.commit(); delete fBozza[id]; toast(val === 'si' ? 'Presenza confermata' : val === 'no' ? 'Segnato come non venuto' : 'Tornato da confermare'); }
+  catch (e) { toast(e.code === 'permission-denied' ? 'Permesso negato: aggiorna le regole di Firebase (sezione punti).' : 'Non riuscito (' + (e.code || e.message) + ').'); }
+}
+
+/* --- Punti clienti: saldo di ognuno, premi, bonus e correzioni --- */
+let fMostra = 60;
+function fClienti() {
+  const q = fQ.toLowerCase();
+  let L = CL.map(c => ({ uid: c.uid, foto: c.foto, nome: nomeCl(c.uid), tel: c.tel || '', mail: c.mail || '', s: saldoDi(c.uid) }));
+  if (q) L = L.filter(x => (x.nome + ' ' + x.mail + ' ' + x.tel).toLowerCase().includes(q));
+  L.sort((a, b) => b.s.saldo - a.s.saldo || a.nome.localeCompare(b.nome, 'it'));
+  const tot = L.reduce((a, x) => a + x.s.saldo, 0);
+  $('fCorpo').innerHTML = `<div class="bar"><input id="fQ" type="search" placeholder="Cerca cliente" value="${esc(fQ)}" style="max-width:320px"><span class="hint" style="margin:0">${L.length} clienti con l’app · ${tot} punti attivi in totale</span></div>
+   <div class="card">${L.slice(0, fMostra).map(x => `<div class="li" data-fcl="${esc(x.uid)}" style="cursor:pointer">${avatar(x)}<div class="t"><b>${esc(x.nome)}</b><small>${x.s.scadenza.punti ? x.s.scadenza.punti + ' punti scadono il ' + new Date(x.s.scadenza.data + 'T12:00').toLocaleDateString('it-IT') : esc(x.tel || x.mail)}</small></div><b class="fsal">${x.s.saldo}<small> punti</small></b></div>`).join('') || '<p class="hint" style="margin:0">Nessun cliente registrato nell’app.</p>'}
+   ${L.length > fMostra ? `<button class="bt" id="fAltri" style="margin-top:10px">Mostra altri</button>` : ''}</div>`;
+  $('fQ').oninput = e => { fQ = e.target.value; const pos = e.target.selectionStart; render(); $('fQ').focus(); $('fQ').setSelectionRange(pos, pos); };
+  if ($('fAltri')) $('fAltri').onclick = () => { fMostra += 60; render(); };
+  $('fCorpo').querySelectorAll('[data-fcl]').forEach(r => r.onclick = () => schedaPunti(r.dataset.fcl));
+}
+const TIPI = { visita: 'Visita', bonus: 'Bonus', premio: 'Premio', rettifica: 'Correzione' };
+function schedaPunti(uid) {
+  const f = fidC(), s = saldoDi(uid), oggiK = iso(new Date()), M = movDi(uid).sort((a, b) => (b.data + (b.ts || 0)).localeCompare(a.data + (a.ts || 0)));
+  const premi = (f.premi || []).slice().sort((a, b) => a.punti - b.punti), prossimo = premi.find(p => p.punti > s.saldo);
+  finestra(`<h3>${esc(nomeCl(uid))}</h3>
+    <div class="stat" style="grid-template-columns:repeat(2,minmax(0,1fr))"><div><b>${s.saldo}</b><span>punti attivi</span></div><div><b>${prossimo ? prossimo.punti - s.saldo : '—'}</b><span>${prossimo ? 'mancano per: ' + esc(prossimo.nome) : 'tutti i premi raggiungibili'}</span></div></div>
+    ${s.scadenza.punti ? `<p class="hint">${s.scadenza.punti} punti scadono il ${new Date(s.scadenza.data + 'T12:00').toLocaleDateString('it-IT')}.</p>` : ''}
+    <b style="display:block;margin:6px 0">Riscatta un premio</b><div class="fpremi">${premi.map(p => `<button class="bt sm${p.punti <= s.saldo ? ' pri' : ''}" data-fpr="${esc(p.id)}" ${p.punti <= s.saldo ? '' : 'disabled'}>${esc(p.nome)} · ${p.punti}</button>`).join('') || '<span class="hint">Nessun premio nel catalogo.</span>'}</div>
+    <b style="display:block;margin:12px 0 6px">Aggiungi un bonus</b><div class="fpremi">${(f.bonus || []).map(x => { const pieno = x.maxMese && window.FID.usiMese(FM, uid, x.id, oggiK) >= x.maxMese; return `<button class="bt sm" data-fbx="${esc(x.id)}" ${pieno ? 'disabled title="Già dato questo mese"' : ''}>${esc(x.nome)} +${x.punti}</button>`; }).join('')}<button class="bt sm" id="fRett">± Correggi punti</button></div>
+    <b style="display:block;margin:14px 0 4px">Movimenti</b><div style="max-height:260px;overflow:auto">${M.map(m => `<div class="li" style="padding:7px 0"><div class="t"><b style="font-weight:600">${TIPI[m.tipo] || ''}${m.nota ? ': ' + esc(m.nota) : ''}</b><small>${new Date(m.data + 'T12:00').toLocaleDateString('it-IT')}</small></div><b style="color:${m.punti < 0 ? 'var(--wait)' : 'var(--ok)'}">${m.punti > 0 ? '+' : ''}${m.punti}</b>${m.tipo !== 'visita' ? `<button class="ib no" data-fdel="${esc(m.id)}" title="Elimina">🗑</button>` : ''}</div>`).join('') || '<p class="hint" style="margin:0">Ancora nessun movimento.</p>'}</div>
+    <div style="display:flex;justify-content:flex-end;margin-top:12px"><button class="bt" id="fChiudi">Chiudi</button></div>`);
+  const scrivi = async (m, msg) => { try { const id = nid('f'); await setDoc(doc(colF, id), Object.assign({ id, uid, data: oggiK, ts: Date.now() }, m)); toast(msg); setTimeout(() => schedaPunti(uid), 300); } catch (e) { toast(e.code === 'permission-denied' ? 'Permesso negato: aggiorna le regole di Firebase (sezione punti).' : 'Non riuscito.'); } };
+  $('fChiudi').onclick = chiudi;
+  $('modIn').querySelectorAll('[data-fpr]').forEach(b => b.onclick = async () => { const p = premi.find(x => x.id === b.dataset.fpr); if (!await conferma('Consegnare “' + p.nome + '”?', 'Verranno tolti ' + p.punti + ' punti a ' + nomeCl(uid) + '.', 'Consegna premio', 'Annulla')) { schedaPunti(uid); return; } scrivi({ tipo: 'premio', premio: p.id, punti: -p.punti, nota: p.nome }, 'Premio consegnato'); });
+  $('modIn').querySelectorAll('[data-fbx]').forEach(b => b.onclick = () => { const x = (f.bonus || []).find(y => y.id === b.dataset.fbx); scrivi({ tipo: 'bonus', bonus: x.id, punti: x.punti, nota: x.nome }, 'Bonus aggiunto'); });
+  $('modIn').querySelectorAll('[data-fdel]').forEach(b => b.onclick = async () => { if (!await conferma('Eliminare il movimento?', 'I punti tornano come prima.', 'Elimina', 'Annulla')) { schedaPunti(uid); return; } try { await deleteDoc(doc(colF, b.dataset.fdel)); toast('Eliminato'); } catch (e) { toast('Non riuscito.'); } setTimeout(() => schedaPunti(uid), 300); });
+  $('fRett').onclick = () => {
+    finestra(`<h3>Correggi i punti di ${esc(nomeCl(uid))}</h3><p class="hint">Usa un numero negativo per togliere punti.</p><div class="grid2"><label>Punti<input id="rP" inputmode="numeric" placeholder="es. 10 oppure -10"></label><label>Motivo<input id="rN" maxlength="60" placeholder="es. Errore di conferma"></label></div><div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px"><button class="bt" id="rX">Annulla</button><button class="bt pri" id="rOk">Salva</button></div>`);
+    $('rX').onclick = () => schedaPunti(uid);
+    $('rOk').onclick = () => { const n = parseInt($('rP').value, 10); if (!n) { toast('Scrivi un numero di punti diverso da zero.'); return; } scrivi({ tipo: 'rettifica', punti: n, nota: $('rN').value.trim() }, 'Punti corretti'); };
+  };
+}
+
+/* --- Impostazioni: scaglioni, bonus, premi, validità --- */
+function fImpostazioni() {
+  const f = fidD(), riga = (k, i, campi) => `<div class="frow">${campi}<button class="ib no" data-fdelr="${k}|${i}" title="Elimina">✕</button></div>`;
+  f.scaglioni.sort((a, b) => a.da - b.da);
+  $('fCorpo').innerHTML = `<div class="card"><label class="sw"><input type="checkbox" data-k="fidelity.attiva" ${f.attiva ? 'checked' : ''}> Fidelity Card attiva (i clienti la vedono nell’app)</label>
+     <label style="max-width:260px;margin-top:12px">I punti scadono dopo (mesi)<input type="number" min="1" max="60" data-k="fidelity.validitaMesi" data-n value="${f.validitaMesi}"></label></div>
+   <div class="card"><h3 style="margin:0 0 4px">Punti per appuntamento</h3><p class="hint">Da quale importo speso si prendono quanti punti. Un servizio gratuito (0 €) non dà punti.</p>
+     <div class="fhead"><span>Da € in su</span><span>Punti</span><span></span></div>
+     ${f.scaglioni.map((s, i) => riga('scaglioni', i, `<input type="number" min="0" step="0.01" data-k="fidelity.scaglioni.${i}.da" data-n value="${s.da}"><input type="number" min="0" data-k="fidelity.scaglioni.${i}.punti" data-n value="${s.punti}">`)).join('')}
+     <button class="bt sm" data-fadd="scaglioni">+ Aggiungi scaglione</button></div>
+   <div class="card"><h3 style="margin:0 0 4px">Bonus fedeltà</h3><p class="hint">Si spuntano nella conferma della giornata o si aggiungono dalla scheda del cliente. “Max al mese” 0 = senza limite.</p>
+     <div class="fhead b"><span>Nome</span><span>Punti</span><span>Max al mese</span><span>Condizione (facoltativa)</span><span></span></div>
+     ${f.bonus.map((x, i) => riga('bonus', i, `<input data-k="fidelity.bonus.${i}.nome" value="${esc(x.nome)}" maxlength="60"><input type="number" min="0" data-k="fidelity.bonus.${i}.punti" data-n value="${x.punti}"><input type="number" min="0" data-k="fidelity.bonus.${i}.maxMese" data-n value="${x.maxMese || 0}"><input data-k="fidelity.bonus.${i}.nota" value="${esc(x.nota || '')}" maxlength="80" placeholder="es. dopo il suo primo servizio">`)).join('')}
+     <button class="bt sm" data-fadd="bonus">+ Aggiungi bonus</button></div>
+   <div class="card"><h3 style="margin:0 0 4px">Catalogo premi</h3><p class="hint">Quando consegni un premio dalla scheda del cliente, i punti vengono tolti.</p>
+     <div class="fhead"><span>Punti</span><span>Premio</span><span></span></div>
+     ${f.premi.map((p, i) => riga('premi', i, `<input type="number" min="1" data-k="fidelity.premi.${i}.punti" data-n value="${p.punti}"><input data-k="fidelity.premi.${i}.nome" value="${esc(p.nome)}" maxlength="60">`)).join('')}
+     <button class="bt sm" data-fadd="premi">+ Aggiungi premio</button></div>`;
+  $('fCorpo').querySelectorAll('.frow').forEach(r => r.classList.add(r.querySelectorAll('input').length === 4 ? 'b' : 'x'));
+  leggi($('fCorpo'));
+  $('fCorpo').querySelectorAll('[data-fadd]').forEach(b => b.onclick = () => {
+    const k = b.dataset.fadd, l = f[k];
+    if (k === 'scaglioni') l.push({ da: (l.length ? l[l.length - 1].da : 0) + 10, punti: (l.length ? l[l.length - 1].punti : 0) + 5 });
+    if (k === 'bonus') l.push({ id: nid('b'), nome: 'Nuovo bonus', punti: 5, maxMese: 0, nota: '' });
+    if (k === 'premi') l.push({ id: nid('p'), punti: (l.length ? Math.max(...l.map(p => p.punti)) : 0) + 50, nome: 'Nuovo premio' });
+    segna(); render();
+  });
+  $('fCorpo').querySelectorAll('[data-fdelr]').forEach(b => b.onclick = () => { const [k, i] = b.dataset.fdelr.split('|'); f[k].splice(+i, 1); segna(); render(); });
+}
+
+/* --- Regolamento: testo libero, le liste si aggiornano da sole --- */
+function fRegolamento() {
+  const f = fidD(), testo = f.regolamento || window.RADICI_SEED.regolamentoFid;
+  $('fCorpo').innerHTML = `<p class="hint">È il regolamento che i clienti leggono nell’app. Scrivi <b>## </b> all’inizio di una riga per un titolo, <b>- </b> per un punto dell’elenco, <b>*testo*</b> per il corsivo. <b>{{scaglioni}}</b>, <b>{{bonus}}</b> e <b>{{premi}}</b> diventano da soli gli elenchi impostati in Impostazioni; <b>{{validita}}</b> la durata dei punti, <b>{{nome}}</b> il nome del salone.</p>
+   <div class="grid2"><div><textarea id="fReg" style="min-height:460px;width:100%">${esc(testo)}</textarea><button class="bt sm" id="fStd" style="margin-top:6px">Ripristina il testo standard</button></div>
+   <div class="card legale" id="fAnt" style="max-height:520px;overflow:auto"></div></div>`;
+  const ant = () => { $('fAnt').innerHTML = window.FID.html(Object.assign({}, f, { regolamento: $('fReg').value }), D, esc); };
+  ant();
+  $('fReg').oninput = () => { f.regolamento = $('fReg').value; segna(); ant(); };
+  $('fStd').onclick = () => { $('fReg').value = window.RADICI_SEED.regolamentoFid; f.regolamento = ''; segna(); ant(); };
 }

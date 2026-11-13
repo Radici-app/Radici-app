@@ -57,6 +57,11 @@ service cloud.firestore {
         allow read: if true;
         allow write: if staffSalone();
       }
+      // Fidelity Card: punti dei clienti. Li scrive solo il salone; ogni cliente legge solo i suoi
+      match /punti/{id} {
+        allow read: if staffSalone() || (request.auth != null && resource.data.uid == request.auth.uid);
+        allow write: if staffSalone();
+      }
       // dati del cliente (nome, telefono, foto): li modifica solo lui, il titolare li legge
       match /clienti/{uid} {
         allow read: if staffSalone() || (request.auth != null && request.auth.uid == uid);
