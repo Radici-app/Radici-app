@@ -209,6 +209,11 @@ main{padding:22px 28px 60px;min-width:0}
 .nprev b{display:block;color:var(--ink);font-size:.92rem}.nprev p{margin:2px 0 0;color:var(--mute);font-size:.88rem;line-height:1.35}
 .nsep{height:1px;background:var(--line);margin:14px 0}
 .tempo{display:flex;align-items:center;gap:8px}.tempo input{width:90px;flex:none}.tempo select{width:auto;flex:none}.tempo span{color:var(--mute);font-weight:600}
+#avvisi{position:fixed;top:14px;right:14px;z-index:300;display:flex;flex-direction:column;gap:8px;width:min(380px,calc(100vw - 28px))}
+#avvisi .arr{display:flex;gap:12px;align-items:flex-start;background:var(--surf);border:1.5px solid var(--acc);border-radius:16px;padding:12px 14px;box-shadow:0 18px 40px -18px rgba(0,0,0,.45);cursor:pointer;animation:arrIn .35s ease-out}
+#avvisi .arr>svg{flex:none;width:22px;height:22px;color:var(--acc);margin-top:2px}#avvisi .arr div{flex:1;min-width:0}#avvisi .arr b{display:block;color:var(--head)}#avvisi .arr span{display:block;color:var(--mute);font-size:.88rem}
+#avvisi .arr button{flex:none;border:0;background:none;color:var(--mute);font-size:1rem;cursor:pointer;padding:0 2px}
+@keyframes arrIn{from{opacity:0;transform:translateY(-8px)}to{opacity:1;transform:none}}
 </style>
 </head>
 <body>
@@ -243,6 +248,7 @@ main{padding:22px 28px 60px;min-width:0}
    <button data-v="galleria"><svg data-i="carta"></svg>Galleria</button>
    <button data-v="regole"><svg data-i="carta"></svg>Regole prenotazione</button>
    <hr>
+   <button id="avvBtn"><svg data-i="campana"></svg><span>Attiva avvisi sul PC</span></button>
    <button id="esci"><svg data-i="esci"></svg>Esci</button>
   </nav>
  </aside>

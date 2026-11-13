@@ -45,7 +45,7 @@ onAuthStateChanged(auth, async u => {
   unsub.push(onSnapshot(SAL, s => { C = Object.assign(cp(window.RADICI_SEED), s.exists() ? window.fasceDaDb(s.data()) : {}); $('sNome').textContent = C.nome; if (!sporco) { D = cp(C); render(); } }));
   const vive = ['agenda', 'clienti', 'ritardatari', 'statistiche'], fermo = () => document.activeElement && (document.activeElement.matches('input[type=search],#cQ,#sQ') || ($('vista').contains(document.activeElement) && document.activeElement.matches('input,textarea,select')));
   const ridisegna = () => { if ((vive.includes(vista) || (vista === 'fidelity' && ['giornata', 'clienti'].includes(fTab))) && $('mod').hidden && !fermo()) render(); };
-  unsub.push(onSnapshot(colP, s => { P = s.docs.map(d => d.data()); ridisegna(); collega(); }));
+  unsub.push(onSnapshot(colP, s => { P = s.docs.map(d => d.data()); controllaNovita(P); ridisegna(); collega(); }));
   unsub.push(onSnapshot(colC, s => { CL = s.docs.map(d => Object.assign({ uid: d.id }, d.data())); ridisegna(); collega(); }));
   unsub.push(onSnapshot(colB, s => { BK = s.docs.map(d => Object.assign({ id: d.id }, d.data())); if (vista === 'agenda' && $('mod').hidden) render(); }));
   unsub.push(onSnapshot(colG, s => { GA = s.docs.map(d => Object.assign({ id: d.id }, d.data())); if (vista === 'galleria' && $('mod').hidden) render(); }, () => {}));
@@ -818,3 +818,66 @@ function vNotifiche() {
   $('vista').querySelectorAll('[data-ndel]').forEach(b => b.onclick = () => { n.promemoria.splice(+b.dataset.ndel, 1); segna(); render(); });
   if ($('nAdd')) $('nAdd').onclick = () => { n.promemoria.push({ id: nid('r'), attivo: true, prima: 180, titolo: 'Promemoria', testo: 'Ti aspettiamo {{quando}} da {{salone}}.' }); segna(); render(); };
 }
+
+/* ---------- AVVISI IN TEMPO REALE nel gestionale aperto: nuove prenotazioni, annullamenti, richieste ----------
+   Riquadro in alto a destra, segnale sonoro, numero nel titolo della scheda e (se permesso) notifica del computer. */
+let visti = null, statiVisti = {}, rqVisti = null, rqStati = {}, nonLetti = 0, audioCtx = null;
+const titoloBase = document.title;
+document.addEventListener('pointerdown', () => { try { audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)(); if (audioCtx.state === 'suspended') audioCtx.resume(); } catch (e) {} }, { passive: true });
+function suona() {
+  if (!audioCtx) return;
+  try { const t = audioCtx.currentTime; [880, 1320].forEach((f, i) => { const o = audioCtx.createOscillator(), g = audioCtx.createGain(), a = t + i * .18; o.type = 'sine'; o.frequency.value = f; g.gain.setValueAtTime(.0001, a); g.gain.exponentialRampToValueAtTime(.22, a + .02); g.gain.exponentialRampToValueAtTime(.0001, a + .5); o.connect(g).connect(audioCtx.destination); o.start(a); o.stop(a + .55); }); } catch (e) {}
+}
+const aggTitolo = () => { document.title = (nonLetti ? '(' + nonLetti + ') ' : '') + titoloBase; };
+addEventListener('focus', () => { nonLetti = 0; aggTitolo(); });
+document.addEventListener('visibilitychange', () => { if (!document.hidden) { nonLetti = 0; aggTitolo(); } });
+function avvisoArrivo(tit, txt, apri) {
+  suona(); if (document.hidden || !document.hasFocus()) { nonLetti++; aggTitolo(); }
+  let box = $('avvisi'); if (!box) { box = document.createElement('div'); box.id = 'avvisi'; box.setAttribute('role', 'status'); document.body.appendChild(box); }
+  const el = document.createElement('div'); el.className = 'arr';
+  el.innerHTML = `<svg data-i="campana"></svg><div><b>${esc(tit)}</b><span>${esc(txt)}</span></div><button aria-label="Chiudi">✕</button>`;
+  window.riempiIcone(el);
+  el.onclick = e => { el.remove(); if (!e.target.closest('button') && apri) apri(); };
+  box.prepend(el); setTimeout(() => el.remove(), 60000);
+  if (window.Notification && Notification.permission === 'granted' && (document.hidden || !document.hasFocus())) {
+    try { const n = new Notification(tit, { body: txt, icon: 'icon-192.png', tag: tit + txt }); n.onclick = () => { window.focus(); if (apri) apri(); n.close(); }; } catch (e) {}
+  }
+}
+const apriGiorno = k => () => { vista = 'agenda'; giorno = k; if ($('mod')) $('mod').hidden = true; render(); scrollTo(0, 0); };
+function controllaNovita(lista) {
+  if (visti === null) { visti = new Set(lista.map(b => b.id)); lista.forEach(b => { statiVisti[b.id] = b.stato; }); return; }
+  lista.forEach(b => {
+    const quando = dataLunga(b.data) + ' alle ' + hm(b.ini), chi = ((b.nome || '') + ' ' + (b.cogn || '')).trim();
+    if (!visti.has(b.id)) {
+      visti.add(b.id); statiVisti[b.id] = b.stato;
+      if (b.stato !== 'annullata' && b.orig !== 'salone' && b.orig !== 'richiesta' && !b.importato) avvisoArrivo('Nuova prenotazione', chi + ' · ' + quando + ' · ' + (b.servizi || []).map(s => s.nome).join(', '), apriGiorno(b.data));
+      return;
+    }
+    if (statiVisti[b.id] !== 'annullata' && b.stato === 'annullata' && b.annullataDa === 'cliente') avvisoArrivo('Prenotazione annullata', chi + ' ha annullato ' + quando, apriGiorno(b.data));
+    statiVisti[b.id] = b.stato;
+  });
+}
+function controllaRichiesteNuove(lista) {
+  if (rqVisti === null) { rqVisti = new Set(lista.map(r => r.id)); lista.forEach(r => { rqStati[r.id] = r.stato; }); return; }
+  const apri = () => { vista = 'richieste'; filtroRq = 'nuova'; render(); scrollTo(0, 0); };
+  lista.forEach(r => {
+    const chi = ((r.nome || '') + ' ' + (r.cogn || '')).trim(), sv = (r.servizio && r.servizio.nome) || 'trucco';
+    if (!rqVisti.has(r.id)) { rqVisti.add(r.id); rqStati[r.id] = r.stato; if (r.stato === 'nuova') avvisoArrivo('Nuova richiesta', chi + ' · ' + sv + (r.dataEvento ? ' · evento ' + dataLunga(r.dataEvento) : ''), apri); return; }
+    if (rqStati[r.id] !== 'annullata' && r.stato === 'annullata' && r.annullataDa !== 'salone') avvisoArrivo('Richiesta annullata', chi + ' ha annullato la richiesta per ' + sv.toLowerCase(), () => { vista = 'richieste'; filtroRq = 'annullata'; render(); });
+    rqStati[r.id] = r.stato;
+  });
+}
+/* tasto nel menu: permesso per le notifiche del computer */
+function aggTastoAvvisi() {
+  const b = $('avvBtn'); if (!b) return;
+  if (!window.Notification) { b.hidden = true; return; }
+  b.querySelector('span').textContent = Notification.permission === 'granted' ? 'Avvisi sul PC: attivi' : Notification.permission === 'denied' ? 'Avvisi sul PC: bloccati' : 'Attiva avvisi sul PC';
+}
+if ($('avvBtn')) $('avvBtn').onclick = async () => {
+  if (!window.Notification) return;
+  if (Notification.permission === 'denied') { toast('Sono bloccati dal browser: clicca il lucchetto accanto all’indirizzo → Notifiche → Consenti.'); return; }
+  if (Notification.permission === 'default') await Notification.requestPermission();
+  aggTastoAvvisi();
+  if (Notification.permission === 'granted') { suona(); toast('Avvisi attivi: tieni aperta questa pagina, anche in secondo piano.'); }
+};
+aggTastoAvvisi();
