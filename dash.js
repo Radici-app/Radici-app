@@ -1,12 +1,12 @@
 /* Radici – dashboard del titolare */
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
-import { getFirestore, doc, getDoc, setDoc, collection, onSnapshot, writeBatch } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
+import { getFirestore, doc, getDoc, setDoc, deleteDoc, collection, onSnapshot, writeBatch } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
 const SALONE = 'radici';
 const fbApp = initializeApp({ apiKey: 'AIzaSyCUhd6pXSheUQ6gPhT5OfvprM5dYI2uxz4', authDomain: 'radici-app.firebaseapp.com', projectId: 'radici-app', storageBucket: 'radici-app.firebasestorage.app', messagingSenderId: '602201707324', appId: '1:602201707324:web:88d8681280de279b81c439' });
 const auth = getAuth(fbApp), db = getFirestore(fbApp);
-const SAL = doc(db, 'saloni', SALONE), colP = collection(db, 'saloni', SALONE, 'prenotazioni'), colB = collection(db, 'saloni', SALONE, 'busy'), colC = collection(db, 'saloni', SALONE, 'clienti');
+const SAL = doc(db, 'saloni', SALONE), colP = collection(db, 'saloni', SALONE, 'prenotazioni'), colB = collection(db, 'saloni', SALONE, 'busy'), colC = collection(db, 'saloni', SALONE, 'clienti'), colA = collection(db, 'saloni', SALONE, 'avvisi');
 
 const $ = id => document.getElementById(id);
 const esc = t => String(t ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -30,7 +30,7 @@ function conferma(t, p, ok = 'Sì', no = 'No') { return new Promise(r => { fines
 const numWa = t => { const d = String(t).replace(/\D/g, ''); return String(t).trim().startsWith('+') || d.startsWith('39') && d.length > 10 ? d : '39' + d; };
 
 /* ---------- stato ---------- */
-let C = cp(window.RADICI_SEED), D = null, sporco = false, P = [], CL = [], vista = 'agenda', giorno = iso(new Date()), filtroCl = '', soloRitardatari = false;
+let C = cp(window.RADICI_SEED), D = null, sporco = false, P = [], CL = [], BK = [], AV = [], vista = 'agenda', giorno = iso(new Date()), filtroCl = '', soloRitardatari = false;
 const unsub = [];
 
 /* ---------- accesso ---------- */
@@ -43,15 +43,18 @@ onAuthStateChanged(auth, async u => {
   $('login').hidden = !!u; $('app').hidden = !u;
   if (!u) return;
   unsub.push(onSnapshot(SAL, s => { C = Object.assign(cp(window.RADICI_SEED), s.exists() ? window.fasceDaDb(s.data()) : {}); $('sNome').textContent = C.nome; if (!sporco) { D = cp(C); render(); } }));
-  unsub.push(onSnapshot(colP, s => { P = s.docs.map(d => d.data()); if (['agenda', 'clienti'].includes(vista) && $('mod').hidden) render(); }));
-  unsub.push(onSnapshot(colC, s => { CL = s.docs.map(d => Object.assign({ uid: d.id }, d.data())); if (vista === 'clienti') render(); }));
+  const vive = ['agenda', 'clienti', 'ritardatari', 'statistiche'], ridisegna = () => { if (vive.includes(vista) && $('mod').hidden && !(document.activeElement && document.activeElement.matches('input[type=search],#cQ,#sQ'))) render(); };
+  unsub.push(onSnapshot(colP, s => { P = s.docs.map(d => d.data()); ridisegna(); collega(); }));
+  unsub.push(onSnapshot(colC, s => { CL = s.docs.map(d => Object.assign({ uid: d.id }, d.data())); ridisegna(); collega(); }));
+  unsub.push(onSnapshot(colB, s => { BK = s.docs.map(d => Object.assign({ id: d.id }, d.data())); if (vista === 'agenda' && $('mod').hidden) render(); }));
+  unsub.push(onSnapshot(colA, s => { AV = s.docs.map(d => d.data()); if (vista === 'comunicazioni') render(); }, () => {}));
 });
 $('lIn').onclick = async () => { $('lErr').textContent = ''; try { await signInWithEmailAndPassword(auth, $('lMail').value.trim(), $('lPass').value); } catch (e) { $('lErr').textContent = e.code === 'auth/too-many-requests' ? 'Troppi tentativi, riprova più tardi.' : 'Email o password non corretti.'; } };
 $('lPass').onkeydown = e => { if (e.key === 'Enter') $('lIn').click(); };
 $('esci').onclick = () => signOut(auth);
 
 /* ---------- navigazione ---------- */
-const TITOLI = { agenda: 'Agenda', clienti: 'Clienti', servizi: 'Servizi', orari: 'Orari', chiusure: 'Giorni di chiusura', staff: 'Staff', negozio: 'Negozio', regole: 'Regole di prenotazione' };
+const TITOLI = { agenda: 'Agenda', clienti: 'Clienti', ritardatari: 'Ritardatari', statistiche: 'Statistiche', comunicazioni: 'Comunicazioni', servizi: 'Servizi', orari: 'Orari', chiusure: 'Giorni di chiusura', staff: 'Staff', negozio: 'Negozio', regole: 'Regole di prenotazione' };
 const IMPOSTAZIONI = ['servizi', 'orari', 'chiusure', 'staff', 'negozio', 'regole'];
 $('nav').querySelectorAll('[data-v]').forEach(b => b.onclick = async () => {
   if (sporco && !await conferma('Modifiche non salvate', 'Vuoi uscire senza salvare?', 'Esci senza salvare', 'Resta')) return;
@@ -66,7 +69,7 @@ function render() {
   $('titolo').textContent = TITOLI[vista];
   $('nav').querySelectorAll('[data-v]').forEach(b => b.setAttribute('aria-current', b.dataset.v === vista));
   $('azioni').innerHTML = '';
-  ({ agenda: vAgenda, clienti: vClienti, servizi: vServizi, orari: vOrari, chiusure: vChiusure, staff: vStaff, negozio: vNegozio, regole: vRegole })[vista]();
+  ({ agenda: vAgenda, clienti: vClienti, ritardatari: vRitardatari, statistiche: vStatistiche, comunicazioni: vComunicazioni, servizi: vServizi, orari: vOrari, chiusure: vChiusure, staff: vStaff, negozio: vNegozio, regole: vRegole })[vista]();
   if (IMPOSTAZIONI.includes(vista)) $('vista').insertAdjacentHTML('beforeend', `<div class="salva"><span id="stato">${sporco ? 'Modifiche non salvate' : ''}</span><button class="bt" id="annulla">Annulla modifiche</button><button class="bt pri" id="salva">Salva</button></div>`);
   window.riempiIcone($('vista'));
   if ($('salva')) { $('salva').onclick = salva; $('annulla').onclick = () => { D = cp(C); sporco = false; render(); }; }
@@ -95,42 +98,88 @@ function leggi(radice) {
 
 /* ---------- AGENDA ---------- */
 const attive = () => P.filter(b => b.stato !== 'annullata');
+const prezzoNum = p => parseFloat(String(p).replace(/[^\d.,]/g, '').replace(',', '.')) || 0;
+const fasceGiorno = k => C.eccezioni.find(e => e.data === k)?.fasce || (C.chiusure.find(c => k >= c.da && k <= c.a) ? [] : C.orari[new Date(k + 'T12:00').getDay()] || []);
+const blocchi = (k, st) => BK.filter(x => x.data === k && x.staff === st && (x.tipo === 'blocco' || x.tipo === 'assenza'));
+const assente = (k, st) => BK.some(x => x.data === k && x.staff === st && x.tipo === 'assenza');
+const ORIG = { app: ['📱', 'Prenotato dall’app'], web: ['💻', 'Prenotato dal sito'], salone: ['🏪', 'Inserito dal salone'] };
+const origine = b => ORIG[b.orig] || (b.uid === 'manuale' ? ORIG.salone : ORIG.web);
+const ICO_TEL = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2"/></svg>';
+const ICO_WA = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20l1.4-3.8A8 8 0 1 1 8 19z"/><path d="M9 9.5c0 2.5 2 4.5 4.5 4.5l1-1.5-1.8-.8-.7.8c-.9-.4-1.6-1.1-2-2l.8-.7-.8-1.8z"/></svg>';
+/* Pulsanti Chiama e WhatsApp (testo facoltativo già scritto per WhatsApp) */
+const contatti = (tel, testo) => !tel ? '' : `<span class="contatti"><a class="az tel" href="tel:${esc(String(tel).replace(/[^\d+]/g, ''))}">${ICO_TEL}<span>Chiama</span></a><a class="az wa" target="_blank" rel="noopener" href="https://wa.me/${numWa(tel)}${testo ? '?text=' + encodeURIComponent(testo) : ''}">${ICO_WA}<span>WhatsApp</span></a></span>`;
+let agOp = 'tutti';
+
 function vAgenda() {
   $('azioni').innerHTML = '<button class="bt pri" id="nuovo">+ Nuovo appuntamento</button>';
-  $('nuovo').onclick = () => nuovo();
-  const L = attive().filter(b => b.data === giorno), inc = L.reduce((a, b) => a + (parseFloat(String(b.prezzo).replace(/[^\d.,]/g, '').replace(',', '.')) || 0), 0);
-  const settimana = new Date(giorno + 'T12:00'); const fine = new Date(settimana); fine.setDate(fine.getDate() + 6);
-  const sett = attive().filter(b => b.data >= giorno && b.data <= iso(fine)).length;
-  const oggiK = iso(new Date()), nuove = P.filter(b => b.creata > Date.now() - 864e5 && b.uid !== 'manuale').length;
-  const f = C.eccezioni.find(e => e.data === giorno)?.fasce || (C.chiusure.find(c => giorno >= c.da && giorno <= c.a) ? [] : C.orari[new Date(giorno + 'T12:00').getDay()] || []);
-  const ini = Math.min(480, ...f.map(x => x[0]), ...L.map(b => b.ini)), fin = Math.max(1200, ...f.map(x => x[1]), ...L.map(b => b.fine)), px = 1.3;
+  $('nuovo').onclick = () => nuovo({ data: giorno, staff: agOp !== 'tutti' ? agOp : '' });
+  if (agOp !== 'tutti' && !C.staff.some(s => s.id === agOp)) agOp = 'tutti';
+  if (agOp === 'tutti' && innerWidth < 700 && C.staff.length) agOp = C.staff[0].id;
+  const L = attive().filter(b => b.data === giorno), inc = L.reduce((a, b) => a + prezzoNum(b.prezzo), 0);
+  const fineS = new Date(giorno + 'T12:00'); fineS.setDate(fineS.getDate() + 6);
+  const sett = attive().filter(b => b.data >= giorno && b.data <= iso(fineS)).length;
+  const oggiK = iso(new Date()), nuove = P.filter(b => b.creata > Date.now() - 864e5 && b.uid !== 'manuale' && b.stato !== 'annullata').length;
+  const f = fasceGiorno(giorno);
+  const ops = agOp === 'tutti' ? C.staff : C.staff.filter(s => s.id === agOp);
+  const ini = Math.floor(Math.min(480, ...f.map(x => x[0]), ...L.map(b => b.ini)) / 10) * 10, fin = Math.ceil(Math.max(1200, ...f.map(x => x[1]), ...L.map(b => b.fine)) / 10) * 10;
+  const px = agOp === 'tutti' ? 1.3 : 4.6, aperto = m => f.some(x => m >= x[0] && m < x[1]);
   const h = (fin - ini) * px;
-  let g = `<div class="hd" style="width:60px"></div>` + C.staff.map(s => `<div class="hd">${esc(s.nome)}</div>`).join('');
-  let ore = ''; for (let m = Math.ceil(ini / 60) * 60; m < fin; m += 60) ore += `<span style="top:${(m - ini) * px}px">${hm(m)}</span>`;
+  let g = `<div class="hd" style="width:60px"></div>` + ops.map(s => `<div class="hd">${esc(s.nome)}${assente(giorno, s.id) ? ' <small class="ass">assente</small>' : ''}</div>`).join('');
+  let ore = ''; const passoOre = agOp === 'tutti' ? 60 : 10;
+  for (let m = Math.ceil(ini / passoOre) * passoOre; m < fin; m += passoOre) ore += `<span style="top:${(m - ini) * px}px">${hm(m)}</span>`;
   g += `<div class="ore" style="height:${h}px">${ore}</div>`;
-  C.staff.forEach(s => {
-    let chiusi = ''; let pos = ini; [...f].sort((a, b) => a[0] - b[0]).forEach(x => { if (x[0] > pos) chiusi += `<div class="chiuso" style="position:absolute;left:0;right:0;top:${(pos - ini) * px}px;height:${(x[0] - pos) * px}px"></div>`; pos = Math.max(pos, x[1]); }); if (pos < fin) chiusi += `<div class="chiuso" style="position:absolute;left:0;right:0;top:${(pos - ini) * px}px;height:${(fin - pos) * px}px"></div>`;
-    const ev = L.filter(b => b.staff === s.id).map(b => `<button class="ev${b.uid === 'manuale' ? ' man' : ''}" data-b="${b.id}" style="top:${(b.ini - ini) * px}px;height:${Math.max(22, b.dur * px - 2)}px"><b>${hm(b.ini)} ${esc(b.nome)} ${esc(b.cogn || '')}</b><small>${esc(b.servizi.map(x => x.nome).join(', '))}</small></button>`).join('');
-    g += `<div class="col" style="height:${h}px;background-size:100% ${60 * px}px;background-position:0 ${((Math.ceil(ini / 60) * 60) - ini) * px}px">${chiusi}${ev}</div>`;
+  ops.forEach(s => {
+    let sfondo = '';
+    for (let m = ini; m < fin; m += 10) if (!aperto(m)) sfondo += `<div class="chiuso" style="top:${(m - ini) * px}px;height:${10 * px}px"></div>`;
+    const ass = assente(giorno, s.id);
+    if (ass) sfondo += `<div class="bloccato" style="top:0;height:${h}px"><span>Assente</span></div>`;
+    else blocchi(giorno, s.id).forEach(x => { sfondo += `<div class="bloccato" style="top:${(Math.max(x.ini, ini) - ini) * px}px;height:${(Math.min(x.fine, fin) - Math.max(x.ini, ini)) * px}px"></div>`; });
+    let righe = '';
+    if (agOp !== 'tutti' && !ass) for (let m = ini; m < fin; m += 10) {
+      const bl = BK.find(x => x.data === giorno && x.staff === s.id && x.tipo === 'blocco' && x.ini === m);
+      righe += `<div class="riga" style="top:${(m - ini) * px}px;height:${10 * px}px"><button class="piu" data-piu="${m}" aria-label="Nuovo alle ${hm(m)}">+</button><button class="blk${bl ? ' on' : ''}" data-blk="${m}" aria-label="${bl ? 'Sblocca' : 'Blocca'} ${hm(m)}" title="${bl ? 'Sblocca' : 'Blocca'} la fascia">⦸</button></div>`;
+    }
+    const ev = L.filter(b => b.staff === s.id).map(b => { const o = origine(b);
+      return `<button class="ev${b.uid === 'manuale' ? ' man' : ''}" data-b="${b.id}" style="top:${(b.ini - ini) * px}px;height:${Math.max(22, b.dur * px - 2)}px"><span class="eh"><b>${hm(b.ini)}–${hm(b.fine)}</b><i title="${o[1]}">${o[0]}</i></span><b class="en">${esc(b.nome)} ${esc(b.cogn || '')}</b><small>${esc(b.servizi.map(x => x.nome).join(', '))}</small></button>`; }).join('');
+    g += `<div class="col${agOp !== 'tutti' ? ' singolo' : ''}" style="height:${h}px;background-size:100% ${(agOp === 'tutti' ? 60 : 10) * px}px;background-position:0 ${((Math.ceil(ini / 60) * 60) - ini) * px}px">${sfondo}${righe}${ev}</div>`;
   });
+  const sel = C.staff.find(s => s.id === agOp);
   $('vista').innerHTML = `<div class="stat"><div><b>${L.length}</b><span>appuntamenti ${giorno === oggiK ? 'oggi' : 'nel giorno'}</span></div><div><b>${Math.round(inc)} €</b><span>incasso previsto</span></div><div><b>${sett}</b><span>nei prossimi 7 giorni</span></div><div><b>${nuove}</b><span>prenotate online nelle ultime 24 h</span></div></div>
-   <div class="bar" style="margin-bottom:10px"><button class="bt" id="gPrev">‹</button><input type="date" id="gData" value="${giorno}" style="width:auto"><button class="bt" id="gNext">›</button><button class="bt" id="gOggi">Oggi</button><b style="text-transform:capitalize">${esc(dataLunga(giorno))}</b></div>
+   <div class="bar" style="margin-bottom:10px"><button class="bt" id="gPrev" aria-label="Giorno precedente">‹</button><input type="date" id="gData" value="${giorno}" style="width:auto"><button class="bt" id="gNext" aria-label="Giorno successivo">›</button><button class="bt" id="gOggi">Oggi</button><b style="text-transform:capitalize">${esc(dataLunga(giorno))}</b></div>
+   <div class="optabs"><button data-op="tutti" aria-pressed="${agOp === 'tutti'}">Tutti</button>${C.staff.map(s => `<button data-op="${s.id}" aria-pressed="${agOp === s.id}">${esc(s.nome)}</button>`).join('')}</div>
+   ${sel ? `<div class="bar presenza"><span class="hint" style="margin:0;flex:1"><b>+</b> nuovo appuntamento · <b>⦸</b> blocca o sblocca la fascia</span><button class="az pres${assente(giorno, sel.id) ? '' : ' on'}" id="pPres">✓ Presente</button><button class="az ass${assente(giorno, sel.id) ? ' on' : ''}" id="pAss">✕ Assente</button></div>` : ''}
    ${f.length ? '' : '<p class="hint">Salone chiuso in questo giorno.</p>'}
-   <div class="ag" style="grid-template-columns:60px repeat(${C.staff.length},minmax(140px,1fr))">${g}</div>`;
+   <div class="ag" style="grid-template-columns:60px repeat(${ops.length},minmax(${agOp === 'tutti' ? 140 : 200}px,1fr))">${g}</div>`;
   const sposta = n => { const d = new Date(giorno + 'T12:00'); d.setDate(d.getDate() + n); giorno = iso(d); render(); };
   $('gPrev').onclick = () => sposta(-1); $('gNext').onclick = () => sposta(1); $('gOggi').onclick = () => { giorno = iso(new Date()); render(); };
   $('gData').onchange = e => { if (e.target.value) { giorno = e.target.value; render(); } };
+  $('vista').querySelectorAll('[data-op]').forEach(b => b.onclick = () => { agOp = b.dataset.op; render(); });
   $('vista').querySelectorAll('[data-b]').forEach(b => b.onclick = () => dettaglio(P.find(x => x.id === b.dataset.b)));
+  $('vista').querySelectorAll('[data-piu]').forEach(b => b.onclick = () => nuovo({ data: giorno, staff: agOp, ora: +b.dataset.piu }));
+  $('vista').querySelectorAll('[data-blk]').forEach(b => b.onclick = () => bloccaFascia(agOp, giorno, +b.dataset.blk));
+  if (sel) { $('pPres').onclick = () => presenza(sel, false); $('pAss').onclick = () => presenza(sel, true); }
+}
+/* Fasce bloccate e assenze: stanno tra gli orari occupati, così l'app non le propone ai clienti */
+async function bloccaFascia(st, k, m) {
+  const id = 'k_' + st + '_' + k + '_' + m, c = BK.find(x => x.id === id);
+  try { if (c) await deleteDoc(doc(colB, id)); else await setDoc(doc(colB, id), { data: k, ini: m, fine: m + 10, staff: st, tipo: 'blocco' }); }
+  catch (e) { toast(e.code === 'permission-denied' ? 'Permesso negato: aggiorna le regole di Firebase.' : 'Non riuscito. Riprova.'); }
+}
+async function presenza(s, ass) {
+  const id = 'a_' + s.id + '_' + giorno;
+  if (ass && attive().some(b => b.data === giorno && b.staff === s.id) && !await conferma(s.nome + ' ha appuntamenti in questo giorno', 'Segnandolo assente i clienti non potranno più prenotarlo, ma gli appuntamenti già presi restano: spostali o annullali tu.', 'Segna assente', 'Annulla')) return;
+  try { if (ass) await setDoc(doc(colB, id), { data: giorno, ini: 0, fine: 1440, staff: s.id, tipo: 'assenza' }); else await deleteDoc(doc(colB, id)); }
+  catch (e) { toast(e.code === 'permission-denied' ? 'Permesso negato: aggiorna le regole di Firebase.' : 'Non riuscito. Riprova.'); }
 }
 function dettaglio(b) {
   if (!b) return;
-  const st = C.staff.find(s => s.id === b.staff) || { nome: b.staffNome };
-  finestra(`<h3>${esc(b.nome)} ${esc(b.cogn || '')}</h3>
+  const st = C.staff.find(s => s.id === b.staff) || { nome: b.staffNome }, o = origine(b), cl = CL.find(c => c.uid === b.uid);
+  finestra(`<div class="li" style="border:0;padding:0 0 6px">${avatar(cl ? { nome: b.nome, foto: cl.foto } : { nome: b.nome })}<div class="t"><h3 style="margin:0">${esc(b.nome)} ${esc(b.cogn || '')}</h3><small>${o[0]} ${o[1]}${b.uid !== 'manuale' ? ' · vede l’appuntamento nell’app' : ''}</small></div></div>
    <p class="hint" style="text-transform:capitalize">${esc(dataLunga(b.data))}, ${hm(b.ini)}–${hm(b.fine)} · ${esc(st.nome)}</p>
    <div class="card" style="box-shadow:none">${b.servizi.map(s => `<div class="li"><div class="t"><b>${esc(s.nome)}</b><small>${fd(s.durata)}</small></div><b>${esc(s.prezzo)}</b></div>`).join('')}<div class="li"><div class="t"><b>Totale</b></div><b>${esc(b.prezzo)}</b></div></div>
    ${b.note ? `<p><b>Note:</b> ${esc(b.note)}</p>` : ''}
-   ${b.tel ? `<p>${esc(b.tel)} · <a href="tel:${esc(b.tel.replace(/[^\d+]/g, ''))}">Chiama</a> · <a target="_blank" rel="noopener" href="https://wa.me/${numWa(b.tel)}">WhatsApp</a></p>` : ''}
-   <p class="hint">${b.uid === 'manuale' ? 'Inserito dalla gestione' : 'Prenotato online il ' + new Date(b.creata).toLocaleString('it-IT', { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })}</p>
+   ${b.tel ? `<p style="margin:0 0 6px">${esc(b.tel)}</p>${contatti(b.tel)}` : ''}
+   <p class="hint" style="margin-top:12px">${b.uid === 'manuale' ? 'Inserito dalla gestione' : 'Prenotato il ' + new Date(b.creata).toLocaleString('it-IT', { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })}</p>
    <div style="display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap"><button class="bt" id="dX">Chiudi</button><button class="bt no" id="dAnn">Annulla appuntamento</button></div>`);
   $('dX').onclick = chiudi;
   $('dAnn').onclick = async () => {
@@ -139,46 +188,131 @@ function dettaglio(b) {
     catch (e) { toast('Non riuscito. Riprova.'); }
   };
 }
-function nuovo() {
-  const vis = C.servizi.filter(s => s.visibile !== false);
+/* Nuovo appuntamento: si può scegliere un cliente registrato, così lo vede nella sua app */
+const telN = t => String(t || '').replace(/\D/g, '').replace(/^(0039|39)(?=\d{9,})/, '');
+function nuovo(pre = {}) {
+  const vis = C.servizi.filter(s => s.visibile !== false); let scelto = null;
   finestra(`<h3>Nuovo appuntamento</h3>
-   <div class="grid2"><label>Nome<input id="nNome"></label><label>Cognome<input id="nCogn"></label></div>
+   <label>Cliente registrato nell’app (facoltativo)<input id="nCerca" placeholder="Cerca per nome o telefono" autocomplete="off"></label>
+   <div id="nRis" class="ris"></div><div id="nSel"></div>
+   <div class="grid2" style="margin-top:10px"><label>Nome<input id="nNome"></label><label>Cognome<input id="nCogn"></label></div>
    <label style="margin-top:10px">Telefono<input id="nTel" type="tel"></label>
    <p class="hint" style="margin:12px 0 4px">Servizi</p><div class="svl">${C.categorie.map(c => { const l = vis.filter(s => s.cat === c.id); return l.length ? `<b style="display:block;margin-top:6px">${esc(c.nome)}</b>` + l.map(s => `<label><input type="checkbox" value="${s.id}">${esc(s.nome)} <small style="color:var(--mute)">· ${fd(s.durata)}</small></label>`).join('') : ''; }).join('')}</div>
-   <div class="grid3" style="margin-top:10px"><label>Operatore<select id="nSt">${C.staff.map(s => `<option value="${s.id}">${esc(s.nome)}</option>`).join('')}</select></label><label>Giorno<input type="date" id="nData" value="${giorno}"></label><label>Ora<input type="time" id="nOra" step="300" value="09:00"></label></div>
+   <div class="grid3" style="margin-top:10px"><label>Operatore<select id="nSt">${C.staff.map(s => `<option value="${s.id}" ${pre.staff === s.id ? 'selected' : ''}>${esc(s.nome)}</option>`).join('')}</select></label><label>Giorno<input type="date" id="nData" value="${pre.data || giorno}"></label><label>Ora<input type="time" id="nOra" step="300" value="${hm(pre.ora != null ? pre.ora : 540)}"></label></div>
    <label style="margin-top:10px">Note<input id="nNote"></label>
    <p class="err" id="nErr"></p>
    <div style="display:flex;gap:8px;justify-content:flex-end"><button class="bt" id="nNo">Annulla</button><button class="bt pri" id="nOk">Salva</button></div>`);
+  const mostraSel = () => {
+    $('nSel').innerHTML = scelto ? `<div class="scelto">${avatar(scelto)}<div class="t"><b>${esc(scelto.nome)} ${esc(scelto.cogn || '')}</b><small>Vedrà l’appuntamento nella sua app</small></div><button class="ib" id="nTogli" aria-label="Togli cliente">✕</button></div>` : '';
+    if (scelto) $('nTogli').onclick = () => { scelto = null; mostraSel(); };
+  };
+  $('nCerca').oninput = e => {
+    const q = e.target.value.trim().toLowerCase();
+    const l = q.length < 2 ? [] : CL.filter(c => ((c.nome || '') + ' ' + (c.cogn || '') + ' ' + (c.tel || '')).toLowerCase().includes(q) || (telN(q) && telN(c.tel).includes(telN(q)))).slice(0, 6);
+    $('nRis').innerHTML = l.map(c => `<button class="ri" data-u="${esc(c.uid)}">${avatar(c)}<span><b>${esc(c.nome || '')} ${esc(c.cogn || '')}</b><small>${esc(c.tel || c.mail || '')}</small></span></button>`).join('') || (q.length >= 2 ? '<p class="hint" style="margin:4px 0">Nessun cliente registrato con questo nome: compila i campi qui sotto.</p>' : '');
+    $('nRis').querySelectorAll('[data-u]').forEach(b => b.onclick = () => {
+      scelto = CL.find(c => c.uid === b.dataset.u); $('nNome').value = scelto.nome || ''; $('nCogn').value = scelto.cogn || ''; $('nTel').value = scelto.tel || '';
+      $('nRis').innerHTML = ''; $('nCerca').value = ''; mostraSel();
+    });
+  };
   $('nNo').onclick = chiudi;
   $('nOk').onclick = async () => {
     const ids = [...$('modIn').querySelectorAll('.svl input:checked')].map(x => x.value), sv = ids.map(id => C.servizi.find(s => s.id === id));
-    const nome = $('nNome').value.trim(), data = $('nData').value, ini = daHm($('nOra').value), st = C.staff.find(s => s.id === $('nSt').value);
-    if (!nome) return $('nErr').textContent = 'Inserisci il nome.'; if (!sv.length) return $('nErr').textContent = 'Scegli almeno un servizio.'; if (!data || ini == null) return $('nErr').textContent = 'Scegli giorno e ora.';
+    const nome = $('nNome').value.trim(), data = $('nData').value, ini = daHm($('nOra').value), st = C.staff.find(s => s.id === $('nSt').value), tel = $('nTel').value.trim();
+    if (!nome) return $('nErr').textContent = 'Inserisci il nome o scegli un cliente.'; if (!sv.length) return $('nErr').textContent = 'Scegli almeno un servizio.'; if (!data || ini == null) return $('nErr').textContent = 'Scegli giorno e ora.';
     const dur = sv.reduce((a, s) => a + (+s.durata || 0), 0), fine = ini + dur;
     const sovr = attive().find(b => b.data === data && b.staff === st.id && ini < b.fine && b.ini < fine);
     if (sovr && !await conferma('Orario occupato', st.nome + ' ha già ' + sovr.nome + ' alle ' + hm(sovr.ini) + '. Inserire comunque?', 'Inserisci comunque', 'No')) return;
-    const id = nid('m'), tot = sv.reduce((a, s) => a + (parseFloat(String(s.prezzo).replace(/[^\d.,]/g, '').replace(',', '.')) || 0), 0);
-    const rec = { id, uid: 'manuale', nome, cogn: $('nCogn').value.trim(), tel: $('nTel').value.trim(), mail: '', note: $('nNote').value.trim(), data, ini, fine, dur, staff: st.id, staffNome: st.nome, servizi: sv.map(s => ({ id: s.id, nome: s.nome, prezzo: s.prezzo, durata: s.durata })), prezzo: tot + ' €', stato: 'ok', creata: Date.now() };
-    try { const w = writeBatch(db); w.set(doc(colP, id), rec); w.set(doc(colB, id), { data, ini, fine, staff: st.id }); await w.commit(); chiudi(); giorno = data; toast('Appuntamento salvato'); render(); }
+    const blk = BK.find(x => x.data === data && x.staff === st.id && (x.tipo === 'blocco' || x.tipo === 'assenza') && ini < x.fine && x.ini < fine);
+    if (blk && !await conferma(blk.tipo === 'assenza' ? st.nome + ' è segnato assente' : 'Fascia bloccata', 'Inserire comunque l’appuntamento?', 'Inserisci comunque', 'No')) return;
+    if (!scelto && telN(tel)) scelto = CL.find(c => telN(c.tel) && telN(c.tel) === telN(tel)) || null;
+    const id = nid('m'), tot = sv.reduce((a, s) => a + prezzoNum(s.prezzo), 0);
+    const rec = { id, uid: scelto ? scelto.uid : 'manuale', orig: 'salone', nome, cogn: $('nCogn').value.trim(), tel, mail: scelto ? scelto.mail || '' : '', note: $('nNote').value.trim(), data, ini, fine, dur, staff: st.id, staffNome: st.nome, servizi: sv.map(s => ({ id: s.id, nome: s.nome, prezzo: s.prezzo, durata: s.durata })), prezzo: tot + ' €', stato: 'ok', creata: Date.now() };
+    try { const w = writeBatch(db); w.set(doc(colP, id), rec); w.set(doc(colB, id), { data, ini, fine, staff: st.id }); await w.commit(); chiudi(); giorno = data; toast(scelto ? 'Salvato: ' + scelto.nome + ' lo vede nella sua app' : 'Appuntamento salvato'); render(); }
     catch (e) { $('nErr').textContent = 'Salvataggio non riuscito.'; }
   };
 }
+/* Collega da solo gli appuntamenti inseriti a mano al cliente che si registra con lo stesso numero */
+let collegando = false;
+async function collega() {
+  if (collegando || !P.length || !CL.length) return;
+  const oggiK = iso(new Date()), w = writeBatch(db); let n = 0;
+  P.forEach(b => { if (b.uid !== 'manuale' || b.stato === 'annullata' || b.data < oggiK || !telN(b.tel)) return;
+    const c = CL.find(x => telN(x.tel) === telN(b.tel)); if (c) { w.update(doc(colP, b.id), { uid: c.uid, mail: c.mail || '' }); n++; } });
+  if (!n) return;
+  collegando = true; try { await w.commit(); toast(n === 1 ? '1 appuntamento collegato all’app del cliente' : n + ' appuntamenti collegati all’app dei clienti'); } catch (e) {} collegando = false;
+}
 
-/* ---------- CLIENTI e ritardatari ---------- */
-function vClienti() {
-  const per = {}; P.filter(b => b.stato !== 'annullata').forEach(b => { const k = b.uid !== 'manuale' ? b.uid : 'm:' + (b.tel || b.nome).toLowerCase(); (per[k] = per[k] || []).push(b); });
+/* ---------- CLIENTI ---------- */
+function elencoClienti() {
+  const per = {}; P.filter(b => b.stato !== 'annullata').forEach(b => { const k = b.uid !== 'manuale' ? b.uid : 'm:' + (telN(b.tel) || b.nome.toLowerCase()); (per[k] = per[k] || []).push(b); });
   const oggiK = iso(new Date());
-  let L = Object.entries(per).map(([k, bs]) => { const c = CL.find(x => x.uid === k) || {}; const pass = bs.filter(b => b.data <= oggiK).sort((a, b) => b.data.localeCompare(a.data)); const b0 = bs[0];
-    return { foto: c.foto || '', nome: ((c.nome || b0.nome) + ' ' + (c.cogn || b0.cogn || '')).trim(), tel: c.tel || b0.tel, visite: pass.length, ultima: pass[0] ? pass[0].data : '', prossima: bs.filter(b => b.data > oggiK).map(b => b.data).sort()[0] || '' }; });
-  CL.forEach(c => { if (!per[c.uid]) L.push({ foto: c.foto || '', nome: (c.nome + ' ' + (c.cogn || '')).trim(), tel: c.tel, visite: 0, ultima: '', prossima: '' }); });
-  const giorniDa = k => k ? Math.round((Date.now() - new Date(k + 'T12:00')) / 864e5) : 9999;
-  if (soloRitardatari) L = L.filter(x => !x.prossima && x.ultima && giorniDa(x.ultima) >= (C.regole.ritardoGiorni || 45)).sort((a, b) => a.ultima.localeCompare(b.ultima));
-  else L.sort((a, b) => a.nome.localeCompare(b.nome));
+  const L = Object.entries(per).map(([k, bs]) => { const c = CL.find(x => x.uid === k) || {}; const pass = bs.filter(b => b.data <= oggiK).sort((a, b) => b.data.localeCompare(a.data)); const b0 = bs[0];
+    return { app: !k.startsWith('m:'), foto: c.foto || '', nome: ((c.nome || b0.nome) + ' ' + (c.cogn || b0.cogn || '')).trim(), tel: c.tel || b0.tel, visite: pass.length, ultima: pass[0] ? pass[0].data : '', prossima: bs.filter(b => b.data > oggiK).map(b => b.data).sort()[0] || '' }; });
+  CL.forEach(c => { if (!per[c.uid]) L.push({ app: true, foto: c.foto || '', nome: ((c.nome || '') + ' ' + (c.cogn || '')).trim() || c.mail || 'Cliente', tel: c.tel, visite: 0, ultima: '', prossima: '' }); });
+  return L;
+}
+function vClienti() {
+  let L = elencoClienti().sort((a, b) => a.nome.localeCompare(b.nome));
   if (filtroCl) L = L.filter(x => (x.nome + ' ' + x.tel).toLowerCase().includes(filtroCl.toLowerCase()));
-  $('vista').innerHTML = `<div class="bar"><input id="cQ" placeholder="Cerca per nome o telefono" value="${esc(filtroCl)}" style="max-width:320px"><label class="chk"><input type="checkbox" id="cR" ${soloRitardatari ? 'checked' : ''}>Solo chi non viene da ${C.regole.ritardoGiorni || 45} giorni</label></div>
-   <div class="card">${L.length ? L.map(x => `<div class="li">${avatar(x)}<div class="t"><b>${esc(x.nome)}</b><small>${x.visite} visite · ultima: ${x.ultima ? esc(dataLunga(x.ultima)) : '—'}${x.prossima ? ' · prossima: ' + esc(dataLunga(x.prossima)) : ''}</small></div>${x.tel ? `<a class="bt sm" href="tel:${esc(String(x.tel).replace(/[^\d+]/g, ''))}">Chiama</a><a class="bt sm" target="_blank" rel="noopener" href="https://wa.me/${numWa(x.tel)}${soloRitardatari ? '?text=' + encodeURIComponent('Ciao ' + x.nome.split(' ')[0] + ', è da un po’ che non ci vediamo! Ti va di prenotare il prossimo appuntamento da ' + C.nome + '?') : ''}">WhatsApp</a>` : ''}</div>`).join('') : '<p class="hint" style="margin:0">Nessun cliente.</p>'}</div>`;
+  $('vista').innerHTML = `<div class="bar"><input id="cQ" type="search" placeholder="Cerca per nome o telefono" value="${esc(filtroCl)}" style="max-width:340px"><span class="hint" style="margin:0">${L.length} clienti</span></div>
+   <div class="card">${L.length ? L.map(x => `<div class="li">${avatar(x)}<div class="t"><b>${esc(x.nome)}${x.app ? ' <span class="tag">app</span>' : ''}</b><small>${x.visite} visite · ultima: ${x.ultima ? esc(dataLunga(x.ultima)) : '—'}${x.prossima ? ' · prossima: ' + esc(dataLunga(x.prossima)) : ''}</small></div>${contatti(x.tel)}</div>`).join('') : '<p class="hint" style="margin:0">Nessun cliente.</p>'}</div>`;
   $('cQ').oninput = e => { filtroCl = e.target.value; const pos = e.target.selectionStart; render(); $('cQ').focus(); $('cQ').setSelectionRange(pos, pos); };
-  $('cR').onchange = e => { soloRitardatari = e.target.checked; render(); };
+}
+/* ---------- RITARDATARI: chi non viene da un po', dal più vecchio ---------- */
+function vRitardatari() {
+  const gg = C.regole.ritardoGiorni || 45, giorniDa = k => Math.round((Date.now() - new Date(k + 'T12:00')) / 864e5);
+  let L = elencoClienti().filter(x => !x.prossima && x.ultima && giorniDa(x.ultima) >= gg).sort((a, b) => a.ultima.localeCompare(b.ultima));
+  if (filtroCl) L = L.filter(x => (x.nome + ' ' + x.tel).toLowerCase().includes(filtroCl.toLowerCase()));
+  $('vista').innerHTML = `<p class="hint">Clienti che non tornano da almeno <b>${gg} giorni</b> e non hanno appuntamenti in programma (il numero di giorni si cambia in Regole prenotazione).</p>
+   <div class="bar"><input id="cQ" type="search" placeholder="Cerca qui" value="${esc(filtroCl)}" style="max-width:340px"><span class="hint" style="margin:0">${L.length} da richiamare</span></div>
+   <div class="card tab"><div class="th"><span>Foto</span><span>Nome cliente</span><span>Ultima prenotazione</span><span></span></div>
+   ${L.length ? L.map(x => `<div class="tr">${avatar(x)}<b>${esc(x.nome)}</b><span>${new Date(x.ultima + 'T12:00').toLocaleDateString('it-IT')}<small>${giorniDa(x.ultima)} giorni fa</small></span>${contatti(x.tel, 'Ciao ' + x.nome.split(' ')[0] + ', è da un po’ che non ci vediamo! Ti va di prenotare il prossimo appuntamento da ' + C.nome + '?')}</div>`).join('') : '<p class="hint" style="margin:10px 0 0">Nessuno: tutti i clienti sono tornati di recente.</p>'}</div>`;
+  $('cQ').oninput = e => { filtroCl = e.target.value; const pos = e.target.selectionStart; render(); $('cQ').focus(); $('cQ').setSelectionRange(pos, pos); };
+}
+/* ---------- STATISTICHE: prenotazioni per operatore in un periodo ---------- */
+let stDa = null, stA = null, stOp = null, stQ = '';
+function vStatistiche() {
+  const t = new Date(); if (!stDa) { stDa = iso(new Date(t.getFullYear(), t.getMonth(), 1)); stA = iso(new Date(t.getFullYear(), t.getMonth() + 1, 0)); }
+  const nel = attive().filter(b => b.data >= stDa && b.data <= stA);
+  if (!stOp || !C.staff.some(s => s.id === stOp)) stOp = C.staff[0] && C.staff[0].id;
+  const conta = id => nel.filter(b => b.staff === id), sel = C.staff.find(s => s.id === stOp) || {};
+  let L = conta(stOp).sort((a, b) => (b.data + p2(b.ini)).localeCompare(a.data + p2(a.ini)));
+  if (stQ) L = L.filter(b => (b.nome + ' ' + (b.cogn || '') + ' ' + b.servizi.map(x => x.nome).join(' ')).toLowerCase().includes(stQ.toLowerCase()));
+  const inc = conta(stOp).reduce((a, b) => a + prezzoNum(b.prezzo), 0);
+  $('vista').innerHTML = `<div class="optabs st">${C.staff.map(s => `<button data-so="${s.id}" aria-pressed="${s.id === stOp}"><b>${esc(s.nome)}</b><small>Prenotazioni: ${conta(s.id).length}</small></button>`).join('')}</div>
+   <div class="bar"><label>Da<input type="date" id="sDa" value="${stDa}"></label><label>A<input type="date" id="sA" value="${stA}"></label><input id="sQ" type="search" placeholder="Filtra" value="${esc(stQ)}" style="max-width:260px;align-self:flex-end"></div>
+   <div class="stat" style="grid-template-columns:repeat(3,minmax(0,1fr))"><div><b>${conta(stOp).length}</b><span>prenotazioni di ${esc(sel.nome || '')}</span></div><div><b>${Math.round(inc)} €</b><span>incasso indicativo</span></div><div><b>${nel.length}</b><span>prenotazioni totali del salone</span></div></div>
+   <h2 style="color:var(--acc);font-size:1.6rem;margin:6px 0 10px">${esc(sel.nome || '')}</h2>
+   <div class="card tab"><div class="th st"><span>Nome cliente</span><span>Data e ora</span><span>Servizi</span></div>
+   ${L.length ? L.map(b => `<div class="tr st" data-b="${b.id}"><b>${esc(b.nome)} ${esc(b.cogn || '')}</b><span>${new Date(b.data + 'T12:00').toLocaleDateString('it-IT')}, ${hm(b.ini)}</span><small>${esc(b.servizi.map(x => x.nome).join(', '))}</small></div>`).join('') : '<p class="hint" style="margin:10px 0 0">Nessuna prenotazione in questo periodo.</p>'}</div>`;
+  $('vista').querySelectorAll('[data-so]').forEach(b => b.onclick = () => { stOp = b.dataset.so; render(); });
+  $('sDa').onchange = e => { if (e.target.value) { stDa = e.target.value; render(); } };
+  $('sA').onchange = e => { if (e.target.value) { stA = e.target.value; render(); } };
+  $('sQ').oninput = e => { stQ = e.target.value; const pos = e.target.selectionStart; render(); $('sQ').focus(); $('sQ').setSelectionRange(pos, pos); };
+  $('vista').querySelectorAll('[data-b]').forEach(r => r.onclick = () => dettaglio(P.find(x => x.id === r.dataset.b)));
+}
+/* ---------- COMUNICAZIONI: avvisi che i clienti vedono nell'app ---------- */
+function vComunicazioni() {
+  const ora = Date.now(), L = AV.slice().sort((a, b) => b.creato - a.creato);
+  const dom = new Date(); dom.setDate(dom.getDate() + 7);
+  $('vista').innerHTML = `<div class="card"><h3>Crea comunicazione</h3><p class="hint">I clienti la vedono nell’app, in Profilo → Avvisi, con un pallino finché non la leggono. Sparisce da sola alla scadenza.</p>
+    <label>Titolo<input id="cT" maxlength="30" placeholder="Es. Chiusura per ferie"></label><small class="cnt" id="cTn">0 / 30</small>
+    <label style="margin-top:8px">Testo<textarea id="cX" maxlength="2000" style="min-height:140px" placeholder="Scrivi il messaggio per i clienti"></textarea></label><small class="cnt" id="cXn">Caratteri: 0/2000</small>
+    <div class="grid2" style="margin-top:8px"><label>Data di scadenza<input type="date" id="cD" value="${iso(dom)}"></label><label>Orario di scadenza<input type="time" id="cO" value="23:59"></label></div>
+    <p class="err" id="cE"></p><button class="bt pri" id="cInv">Invia a tutti i clienti</button></div>
+   <div class="card"><h3>Comunicazioni inviate</h3>${L.length ? L.map(a => `<div class="li"><div class="t"><b>${esc(a.titolo)}</b><small>${a.scade > ora ? 'Visibile fino al ' + new Date(a.scade).toLocaleString('it-IT', { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' }) : 'Scaduta'} · inviata il ${new Date(a.creato).toLocaleDateString('it-IT')}</small><p style="margin:6px 0 0;white-space:pre-line">${esc(a.testo)}</p></div><button class="bt sm no" data-del="${esc(a.id)}">Elimina</button></div>`).join('') : '<p class="hint" style="margin:0">Nessuna comunicazione.</p>'}</div>`;
+  $('cT').oninput = e => { $('cTn').textContent = e.target.value.length + ' / 30'; };
+  $('cX').oninput = e => { $('cXn').textContent = 'Caratteri: ' + e.target.value.length + '/2000'; };
+  $('cInv').onclick = async () => {
+    const titolo = $('cT').value.trim(), testo = $('cX').value.trim(), scade = new Date($('cD').value + 'T' + ($('cO').value || '23:59')).getTime();
+    if (!titolo || !testo) return $('cE').textContent = 'Scrivi titolo e testo.';
+    if (!(scade > Date.now())) return $('cE').textContent = 'La scadenza deve essere nel futuro.';
+    const id = nid('n');
+    try { await setDoc(doc(colA, id), { id, titolo, testo, creato: Date.now(), scade }); toast('Comunicazione inviata'); render(); }
+    catch (e) { $('cE').textContent = e.code === 'permission-denied' ? 'Permesso negato: aggiorna le regole di Firebase.' : 'Invio non riuscito. Riprova.'; }
+  };
+  $('vista').querySelectorAll('[data-del]').forEach(b => b.onclick = async () => { if (!await conferma('Eliminare la comunicazione?', 'I clienti non la vedranno più.', 'Elimina')) return; try { await deleteDoc(doc(colA, b.dataset.del)); toast('Eliminata'); } catch (e) { toast('Non riuscito.'); } });
 }
 
 /* ---------- SERVIZI ---------- */

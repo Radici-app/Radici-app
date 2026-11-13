@@ -20,8 +20,9 @@ service cloud.firestore {
       // orari occupati, senza dati personali: servono all'app per mostrare gli orari liberi
       match /busy/{id} {
         allow read: if true;
-        allow create: if request.auth != null
-          && request.resource.data.keys().hasOnly(['data','ini','fine','staff']);
+        // il cliente crea solo l'orario occupato della sua prenotazione; il titolare anche blocchi e assenze
+        allow create: if staffSalone() || (request.auth != null
+          && request.resource.data.keys().hasOnly(['data','ini','fine','staff']));
         allow update: if staffSalone();
         allow delete: if staffSalone() || (request.auth != null
           && get(/databases/$(database)/documents/saloni/$(sid)/prenotazioni/$(id)).data.uid == request.auth.uid);
@@ -37,6 +38,11 @@ service cloud.firestore {
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['stato','annullataIl','annullataDa'])
           && request.resource.data.stato == 'annullata');
         allow delete: if staffSalone();
+      }
+      // comunicazioni del salone ai clienti: tutti leggono, solo il titolare scrive
+      match /avvisi/{id} {
+        allow read: if true;
+        allow write: if staffSalone();
       }
       // dati del cliente (nome, telefono, foto): li modifica solo lui, il titolare li legge
       match /clienti/{uid} {
