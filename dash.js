@@ -824,18 +824,32 @@ function vNotifiche() {
 let visti = null, statiVisti = {}, rqVisti = null, rqStati = {}, nonLetti = 0, audioCtx = null;
 const titoloBase = document.title;
 document.addEventListener('pointerdown', () => { try { audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)(); if (audioCtx.state === 'suspended') audioCtx.resume(); } catch (e) {} }, { passive: true });
-function suona() {
-  if (!audioCtx) return;
-  try { const t = audioCtx.currentTime; [880, 1320].forEach((f, i) => { const o = audioCtx.createOscillator(), g = audioCtx.createGain(), a = t + i * .18; o.type = 'sine'; o.frequency.value = f; g.gain.setValueAtTime(.0001, a); g.gain.exponentialRampToValueAtTime(.22, a + .02); g.gain.exponentialRampToValueAtTime(.0001, a + .5); o.connect(g).connect(audioCtx.destination); o.start(a); o.stop(a + .55); }); } catch (e) {}
+/* suono di avviso: tre note tipo campanello, abbastanza forte da sentirlo con il gestionale in secondo piano */
+let suonoOn = true; try { suonoOn = localStorage.getItem('suonoAvvisi') !== '0'; } catch (e) {}
+function suona(forza) {
+  if (!suonoOn && !forza) return;
+  try { audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)(); if (audioCtx.state === 'suspended') audioCtx.resume(); } catch (e) { return; }
+  try {
+    const t = audioCtx.currentTime + .02, out = audioCtx.createGain(); out.gain.value = .9; out.connect(audioCtx.destination);
+    [[988, 0], [1319, .16], [1568, .32]].forEach(([f, d]) => {
+      [1, 2.01].forEach((arm, j) => { const o = audioCtx.createOscillator(), g = audioCtx.createGain(), a = t + d; o.type = 'sine'; o.frequency.value = f * arm;
+        g.gain.setValueAtTime(.0001, a); g.gain.exponentialRampToValueAtTime(j ? .12 : .45, a + .015); g.gain.exponentialRampToValueAtTime(.0001, a + .9);
+        o.connect(g).connect(out); o.start(a); o.stop(a + .95); });
+    });
+  } catch (e) {}
 }
+function aggTastoSuono() { const b = $('suonoBtn'); if (b) b.querySelector('span').textContent = 'Suono avvisi: ' + (suonoOn ? 'attivo' : 'spento'); }
+if ($('suonoBtn')) $('suonoBtn').onclick = () => { suonoOn = !suonoOn; try { localStorage.setItem('suonoAvvisi', suonoOn ? '1' : '0'); } catch (e) {} aggTastoSuono(); if (suonoOn) { suona(true); toast('Suono attivo: ecco come suona'); } else toast('Suono spento'); };
+aggTastoSuono();
 const aggTitolo = () => { document.title = (nonLetti ? '(' + nonLetti + ') ' : '') + titoloBase; };
 addEventListener('focus', () => { nonLetti = 0; aggTitolo(); });
 document.addEventListener('visibilitychange', () => { if (!document.hidden) { nonLetti = 0; aggTitolo(); } });
 function avvisoArrivo(tit, txt, apri) {
   suona(); if (document.hidden || !document.hasFocus()) { nonLetti++; aggTitolo(); }
+  const muto = suonoOn && (!audioCtx || audioCtx.state !== 'running');
   let box = $('avvisi'); if (!box) { box = document.createElement('div'); box.id = 'avvisi'; box.setAttribute('role', 'status'); document.body.appendChild(box); }
   const el = document.createElement('div'); el.className = 'arr';
-  el.innerHTML = `<svg data-i="campana"></svg><div><b>${esc(tit)}</b><span>${esc(txt)}</span></div><button aria-label="Chiudi">✕</button>`;
+  el.innerHTML = `<svg data-i="campana"></svg><div><b>${esc(tit)}</b><span>${esc(txt)}</span>${muto ? '<em>🔇 Il browser ha bloccato il suono: clicca una volta nella pagina per attivarlo</em>' : ''}</div><button aria-label="Chiudi">✕</button>`;
   window.riempiIcone(el);
   el.onclick = e => { el.remove(); if (!e.target.closest('button') && apri) apri(); };
   box.prepend(el); setTimeout(() => el.remove(), 60000);
@@ -878,6 +892,6 @@ if ($('avvBtn')) $('avvBtn').onclick = async () => {
   if (Notification.permission === 'denied') { toast('Sono bloccati dal browser: clicca il lucchetto accanto all’indirizzo → Notifiche → Consenti.'); return; }
   if (Notification.permission === 'default') await Notification.requestPermission();
   aggTastoAvvisi();
-  if (Notification.permission === 'granted') { suona(); toast('Avvisi attivi: tieni aperta questa pagina, anche in secondo piano.'); }
+  if (Notification.permission === 'granted') { suona(true); toast('Avvisi attivi: tieni aperta questa pagina, anche in secondo piano.'); }
 };
 aggTastoAvvisi();
