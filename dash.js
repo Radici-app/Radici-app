@@ -1,11 +1,12 @@
 /* Radici – dashboard del titolare */
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
-import { getFirestore, doc, getDoc, setDoc, deleteDoc, collection, onSnapshot, writeBatch, deleteField } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
+import { getFirestore, initializeFirestore, persistentLocalCache, persistentMultipleTabManager, query, where, getDocs, limit, doc, getDoc, setDoc, deleteDoc, collection, onSnapshot, writeBatch, deleteField } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
 const SALONE = 'radici';
 const fbApp = initializeApp({ apiKey: 'AIzaSyCUhd6pXSheUQ6gPhT5OfvprM5dYI2uxz4', authDomain: 'radici-app.firebaseapp.com', projectId: 'radici-app', storageBucket: 'radici-app.firebasestorage.app', messagingSenderId: '602201707324', appId: '1:602201707324:web:88d8681280de279b81c439' });
-const auth = getAuth(fbApp), db = getFirestore(fbApp);
+const auth = getAuth(fbApp);
+let db; try { db = initializeFirestore(fbApp, { localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }) }); } catch (e) { db = getFirestore(fbApp); }
 const SAL = doc(db, 'saloni', SALONE), colP = collection(db, 'saloni', SALONE, 'prenotazioni'), colB = collection(db, 'saloni', SALONE, 'busy'), colC = collection(db, 'saloni', SALONE, 'clienti'), colA = collection(db, 'saloni', SALONE, 'avvisi'), colR = collection(db, 'saloni', SALONE, 'rubrica'), colG = collection(db, 'saloni', SALONE, 'galleria'), colGF = collection(db, 'saloni', SALONE, 'galleriaFoto'), colF = collection(db, 'saloni', SALONE, 'punti');
 
 const $ = id => document.getElementById(id);
@@ -30,12 +31,12 @@ function conferma(t, p, ok = 'Sì', no = 'No') { return new Promise(r => { fines
 const numWa = t => { const d = String(t).replace(/\D/g, ''); return String(t).trim().startsWith('+') || d.startsWith('39') && d.length > 10 ? d : '39' + d; };
 
 /* ---------- stato ---------- */
-let C = cp(window.RADICI_SEED), D = null, sporco = false, P = [], CL = [], BK = [], AV = [], RB = [], GA = [], FM = [], vista = 'agenda', giorno = iso(new Date()), filtroCl = '', soloRitardatari = false;
+let C = cp(window.RADICI_SEED), D = null, sporco = false, P = [], CL = [], BK = [], AV = [], RB = [], GA = [], FM = [], PL = [], PS = [], vista = 'agenda', giorno = iso(new Date()), filtroCl = '', soloRitardatari = false;
 const unsub = [];
 
 /* ---------- accesso ---------- */
 onAuthStateChanged(auth, async u => {
-  unsub.splice(0).forEach(f => f());
+  unsub.splice(0).forEach(f => f()); galOn = false; PL = []; PS = [];
   $('attesa').hidden = true;
   let ok = false;
   if (u) { try { ok = (await getDoc(doc(db, 'saloni', SALONE, 'admin', u.uid))).exists(); } catch (e) {} }
@@ -45,12 +46,16 @@ onAuthStateChanged(auth, async u => {
   unsub.push(onSnapshot(SAL, s => { C = Object.assign(cp(window.RADICI_SEED), s.exists() ? window.fasceDaDb(s.data()) : {}); $('sNome').textContent = C.nome; if (!sporco) { D = cp(C); render(); } }));
   const vive = ['agenda', 'clienti', 'ritardatari', 'statistiche'], fermo = () => document.activeElement && (document.activeElement.matches('input[type=search],#cQ,#sQ') || ($('vista').contains(document.activeElement) && document.activeElement.matches('input,textarea,select')));
   const ridisegna = () => { if ((vive.includes(vista) || (vista === 'fidelity' && ['giornata', 'clienti'].includes(fTab))) && $('mod').hidden && !fermo()) render(); };
-  unsub.push(onSnapshot(colP, s => { P = s.docs.map(d => d.data()); controllaNovita(P); ridisegna(); collega(); }));
-  unsub.push(onSnapshot(colC, s => { CL = s.docs.map(d => Object.assign({ uid: d.id }, d.data())); ridisegna(); collega(); }));
-  unsub.push(onSnapshot(colB, s => { BK = s.docs.map(d => Object.assign({ id: d.id }, d.data())); if (vista === 'agenda' && $('mod').hidden) render(); }));
-  unsub.push(onSnapshot(colG, s => { GA = s.docs.map(d => Object.assign({ id: d.id }, d.data())); if (vista === 'galleria' && $('mod').hidden) render(); }, () => {}));
-  unsub.push(onSnapshot(colR, s => { RB = s.docs.map(d => Object.assign({ id: d.id }, d.data())); ridisegna(); }, () => {}));
-  unsub.push(onSnapshot(colF, s => { FM = s.docs.map(d => Object.assign({ id: d.id }, d.data())); ridisegna(); }, () => {}));
+  /* prenotazioni: in tempo reale solo dagli ultimi 90 giorni in avanti; lo storico più vecchio è salvato su questo dispositivo e si scarica solo la parte nuova */
+  unsub.push(onSnapshot(query(colP, where('data', '>=', taglioP())), s => { PL = s.docs.map(d => d.data()); controllaNovita(PL); unisciP(); ridisegna(); collega(); }));
+  caricaStorico().then(() => { unisciP(); ridisegna(); });
+  /* clienti, rubrica e punti: salvati su questo dispositivo, da Firebase arrivano solo quelli cambiati */
+  cacheSync(colC, 'clienti', d => Object.assign({ uid: d.id }, d.data()), l => { CL = l; ridisegna(); collega(); });
+  unsub.push(onSnapshot(query(colB, where('data', '>=', giorniFa(30))), s => { BK = s.docs.map(d => Object.assign({ id: d.id }, d.data())); if (vista === 'agenda' && $('mod').hidden) render(); }));
+  pulisciBusy();
+
+  cacheSync(colR, 'rubrica', d => Object.assign({ id: d.id }, d.data()), l => { RB = l; ridisegna(); });
+  cacheSync(colF, 'punti', d => Object.assign({ id: d.id }, d.data()), l => { FM = l.filter(m => !m.annullato); ridisegna(); });
   unsub.push(onSnapshot(colA, s => { AV = s.docs.map(d => d.data()); if (vista === 'comunicazioni') render(); }, () => {}));
 });
 $('lIn').onclick = async () => { $('lErr').textContent = ''; try { await signInWithEmailAndPassword(auth, $('lMail').value.trim(), $('lPass').value); } catch (e) { $('lErr').textContent = e.code === 'auth/too-many-requests' ? 'Troppi tentativi, riprova più tardi.' : 'Email o password non corretti.'; } };
@@ -69,6 +74,7 @@ $('side').addEventListener('click', e => { if (e.target.id === 'side') $('side')
 addEventListener('beforeunload', e => { if (sporco) { e.preventDefault(); e.returnValue = ''; } });
 
 function render() {
+  if (vista === 'galleria' && !galOn) { galOn = true; unsub.push(onSnapshot(colG, s => { GA = s.docs.map(d => Object.assign({ id: d.id }, d.data())); if (vista === 'galleria' && $('mod').hidden) render(); }, () => {})); }
   if (!D) D = cp(C);
   $('titolo').textContent = TITOLI[vista];
   $('nav').querySelectorAll('[data-v]').forEach(b => b.setAttribute('aria-current', b.dataset.v === vista));
@@ -278,7 +284,8 @@ function elencoClienti() {
 }
 let mostraCl = 150;
 function vClienti() {
-  $('azioni').innerHTML = '<button class="bt" id="imp">⬆ Importa da CSV</button>';
+  $('azioni').innerHTML = '<button class="bt" id="ricar" title="Riscarica da Firebase clienti, punti e storico salvati su questo dispositivo">↻ Ricarica dati</button> <button class="bt" id="imp">⬆ Importa da CSV</button>';
+  $('ricar').onclick = async () => { if (await conferma('Ricaricare tutti i dati?', 'Usalo solo se qualcosa sembra non aggiornato: riscarica da Firebase clienti, punti e storico delle prenotazioni.', 'Ricarica', 'Annulla')) ricaricaTutto(); else render(); };
   $('imp').onclick = importa;
   let L = elencoClienti().sort((a, b) => a.nome.localeCompare(b.nome, 'it'));
   if (filtroCl) { const q = filtroCl.toLowerCase(), qt = telN(filtroCl); L = L.filter(x => (x.nome + ' ' + x.mail).toLowerCase().includes(q) || (qt && telN(x.tel).includes(qt))); }
@@ -340,7 +347,7 @@ function importa() {
         const ora = Date.now();
         for (let i = 0; i < recs.length; i += 400) {
           const w = writeBatch(db);
-          recs.slice(i, i + 400).forEach(r => { const d = { nome: r.nome, cogn: r.cogn, tel: r.tel, mail: r.mail, fonte: 'import', importato: ora }; if (r.dal) d.dal = r.dal; w.set(doc(colR, idRubrica(r)), d, { merge: true }); });
+          recs.slice(i, i + 400).forEach(r => { const d = { nome: r.nome, cogn: r.cogn, tel: r.tel, mail: r.mail, fonte: 'import', importato: ora, agg: ora }; if (r.dal) d.dal = r.dal; w.set(doc(colR, idRubrica(r)), d, { merge: true }); });
           await w.commit(); $('iOk').textContent = 'Importati ' + Math.min(i + 400, recs.length) + ' / ' + recs.length + '…';
         }
         chiudi(); toast(unici.size + ' clienti importati'); vista = 'clienti'; render();
@@ -675,19 +682,19 @@ function fRiga(b) {
 async function segnaPresenza(id, val) {
   const b = P.find(x => x.id === id); if (!b) return;
   const f = fidC(), z = fBozza[id] || {}, w = writeBatch(db), mv = FM.filter(m => m.pren === id), ora = Date.now();
-  if (!val) { w.update(doc(colP, id), { presenza: deleteField(), confermataIl: deleteField() }); mv.forEach(m => w.delete(doc(colF, m.id))); }
-  else if (val === 'no') { w.update(doc(colP, id), { presenza: 'no', confermataIl: ora }); mv.forEach(m => w.delete(doc(colF, m.id))); }
+  if (!val) { w.update(doc(colP, id), { presenza: deleteField(), confermataIl: deleteField() }); mv.forEach(m => w.set(doc(colF, m.id), { annullato: true, punti: 0, agg: Date.now() }, { merge: true })); }
+  else if (val === 'no') { w.update(doc(colP, id), { presenza: 'no', confermataIl: ora }); mv.forEach(m => w.set(doc(colF, m.id), { annullato: true, punti: 0, agg: Date.now() }, { merge: true })); }
   else {
     const raw = z.importo !== undefined ? z.importo : (b.importo !== undefined ? b.importo : prezzoNum(b.prezzo)), imp = Math.max(0, parseFloat(String(raw).replace(',', '.')) || 0);
     w.update(doc(colP, id), { presenza: 'si', confermataIl: ora, importo: imp });
     if (contaApp(b)) {
       const p = window.FID.puntiPer(imp, f), vid = 'v_' + id;
-      if (p > 0) w.set(doc(colF, vid), { id: vid, uid: b.uid, data: b.data, ts: ora, tipo: 'visita', punti: p, importo: imp, pren: id, nota: b.servizi.map(x => x.nome).join(', ') });
-      else if (mv.some(m => m.id === vid)) w.delete(doc(colF, vid));
+      if (p > 0) w.set(doc(colF, vid), { agg: Date.now(), id: vid, uid: b.uid, data: b.data, ts: ora, tipo: 'visita', punti: p, importo: imp, pren: id, nota: b.servizi.map(x => x.nome).join(', ') });
+      else if (mv.some(m => m.id === vid)) w.set(doc(colF, vid), { annullato: true, punti: 0, agg: Date.now() }, { merge: true });
       (f.bonus || []).forEach(x => {
         const bid = 'b_' + id + '_' + x.id, gia = mv.some(m => m.id === bid), vuole = z.bonus && z.bonus[x.id] !== undefined ? z.bonus[x.id] : gia;
-        if (vuole && !gia) w.set(doc(colF, bid), { id: bid, uid: b.uid, data: b.data, ts: ora, tipo: 'bonus', bonus: x.id, punti: x.punti, pren: id, nota: x.nome });
-        if (!vuole && gia) w.delete(doc(colF, bid));
+        if (vuole && !gia) w.set(doc(colF, bid), { agg: Date.now(), id: bid, uid: b.uid, data: b.data, ts: ora, tipo: 'bonus', bonus: x.id, punti: x.punti, pren: id, nota: x.nome });
+        if (!vuole && gia) w.set(doc(colF, bid), { annullato: true, punti: 0, agg: Date.now() }, { merge: true });
       });
     }
   }
@@ -721,11 +728,11 @@ function schedaPunti(uid) {
     <b style="display:block;margin:12px 0 6px">Aggiungi un bonus</b><div class="fpremi">${(f.bonus || []).map(x => { const pieno = x.maxMese && window.FID.usiMese(FM, uid, x.id, oggiK) >= x.maxMese; return `<button class="bt sm" data-fbx="${esc(x.id)}" ${pieno ? 'disabled title="Già dato questo mese"' : ''}>${esc(x.nome)} +${x.punti}</button>`; }).join('')}<button class="bt sm" id="fRett">± Correggi punti</button></div>
     <b style="display:block;margin:14px 0 4px">Movimenti</b><div style="max-height:260px;overflow:auto">${M.map(m => `<div class="li" style="padding:7px 0"><div class="t"><b style="font-weight:600">${TIPI[m.tipo] || ''}${m.nota ? ': ' + esc(m.nota) : ''}</b><small>${new Date(m.data + 'T12:00').toLocaleDateString('it-IT')}</small></div><b style="color:${m.punti < 0 ? 'var(--wait)' : 'var(--ok)'}">${m.punti > 0 ? '+' : ''}${m.punti}</b>${m.tipo !== 'visita' ? `<button class="ib no" data-fdel="${esc(m.id)}" title="Elimina">🗑</button>` : ''}</div>`).join('') || '<p class="hint" style="margin:0">Ancora nessun movimento.</p>'}</div>
     <div style="display:flex;justify-content:flex-end;margin-top:12px"><button class="bt" id="fChiudi">Chiudi</button></div>`);
-  const scrivi = async (m, msg) => { try { const id = nid('f'); await setDoc(doc(colF, id), Object.assign({ id, uid, data: oggiK, ts: Date.now() }, m)); toast(msg); setTimeout(() => schedaPunti(uid), 300); } catch (e) { toast(e.code === 'permission-denied' ? 'Permesso negato: aggiorna le regole di Firebase (sezione punti).' : 'Non riuscito.'); } };
+  const scrivi = async (m, msg) => { try { const id = nid('f'); await setDoc(doc(colF, id), Object.assign({ id, uid, data: oggiK, ts: Date.now(), agg: Date.now() }, m)); toast(msg); setTimeout(() => schedaPunti(uid), 300); } catch (e) { toast(e.code === 'permission-denied' ? 'Permesso negato: aggiorna le regole di Firebase (sezione punti).' : 'Non riuscito.'); } };
   $('fChiudi').onclick = chiudi;
   $('modIn').querySelectorAll('[data-fpr]').forEach(b => b.onclick = async () => { const p = premi.find(x => x.id === b.dataset.fpr); if (!await conferma('Consegnare “' + p.nome + '”?', 'Verranno tolti ' + p.punti + ' punti a ' + nomeCl(uid) + '.', 'Consegna premio', 'Annulla')) { schedaPunti(uid); return; } scrivi({ tipo: 'premio', premio: p.id, punti: -p.punti, nota: p.nome }, 'Premio consegnato'); });
   $('modIn').querySelectorAll('[data-fbx]').forEach(b => b.onclick = () => { const x = (f.bonus || []).find(y => y.id === b.dataset.fbx); scrivi({ tipo: 'bonus', bonus: x.id, punti: x.punti, nota: x.nome }, 'Bonus aggiunto'); });
-  $('modIn').querySelectorAll('[data-fdel]').forEach(b => b.onclick = async () => { if (!await conferma('Eliminare il movimento?', 'I punti tornano come prima.', 'Elimina', 'Annulla')) { schedaPunti(uid); return; } try { await deleteDoc(doc(colF, b.dataset.fdel)); toast('Eliminato'); } catch (e) { toast('Non riuscito.'); } setTimeout(() => schedaPunti(uid), 300); });
+  $('modIn').querySelectorAll('[data-fdel]').forEach(b => b.onclick = async () => { if (!await conferma('Eliminare il movimento?', 'I punti tornano come prima.', 'Elimina', 'Annulla')) { schedaPunti(uid); return; } try { await setDoc(doc(colF, b.dataset.fdel), { annullato: true, punti: 0, agg: Date.now() }, { merge: true }); toast('Eliminato'); } catch (e) { toast('Non riuscito.'); } setTimeout(() => schedaPunti(uid), 300); });
   $('fRett').onclick = () => {
     finestra(`<h3>Correggi i punti di ${esc(nomeCl(uid))}</h3><p class="hint">Usa un numero negativo per togliere punti.</p><div class="grid2"><label>Punti<input id="rP" inputmode="numeric" placeholder="es. 10 oppure -10"></label><label>Motivo<input id="rN" maxlength="60" placeholder="es. Errore di conferma"></label></div><div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px"><button class="bt" id="rX">Annulla</button><button class="bt pri" id="rOk">Salva</button></div>`);
     $('rX').onclick = () => schedaPunti(uid);
@@ -897,3 +904,43 @@ if ($('avvBtn')) $('avvBtn').onclick = async () => {
   if (Notification.permission === 'granted') { suona(true); toast('Avvisi attivi: tieni aperta questa pagina, anche in secondo piano.'); }
 };
 aggTastoAvvisi();
+
+/* ---------- LETTURE RIDOTTE (quota gratuita di Firebase) ----------
+   I dati che crescono sempre restano salvati su questo dispositivo (IndexedDB): da Firebase si scarica solo quello che è cambiato. */
+let galOn = false;
+const giorniFa = n => iso(new Date(Date.now() - n * 864e5));
+const taglioP = () => giorniFa(90);
+const unisciP = () => { const ids = new Set(PL.map(b => b.id)); P = PS.filter(b => !ids.has(b.id)).concat(PL); };
+const idb = (() => { let p = null; const apri = () => p || (p = new Promise((ok, ko) => { const r = indexedDB.open('radiciGestione', 1); r.onupgradeneeded = () => r.result.createObjectStore('c'); r.onsuccess = () => ok(r.result); r.onerror = () => ko(r.error); }));
+  const op = (m, ...a) => apri().then(d => new Promise((ok, ko) => { const t = d.transaction('c', m === 'get' ? 'readonly' : 'readwrite'), r = t.objectStore('c')[m](...a); r.onsuccess = () => ok(r.result); r.onerror = () => ko(r.error); }));
+  return { get: k => op('get', k).catch(() => null), set: (k, v) => op('put', v, k).catch(() => {}), svuota: () => op('clear').catch(() => {}) }; })();
+const chiaveC = k => SALONE + ':' + (auth.currentUser ? auth.currentUser.uid : '') + ':' + k;
+/* una raccolta salvata sul dispositivo + in tempo reale solo i documenti con "agg" più recente (15 minuti di margine per orologi diversi) */
+async function cacheSync(col, nome, leggi, aggiorna) {
+  const k = chiaveC(nome), c = (await idb.get(k)) || { docs: {}, ultimo: 0 }, pieno = !c.ultimo;
+  if (Object.keys(c.docs).length) aggiorna(Object.values(c.docs));
+  const q = c.ultimo ? query(col, where('agg', '>', c.ultimo - 15 * 60000)) : col;
+  unsub.push(onSnapshot(q, s => {
+    s.docChanges().forEach(ch => { if (ch.type === 'removed') { if (pieno) delete c.docs[ch.doc.id]; return; } const d = leggi(ch.doc); c.docs[ch.doc.id] = d; });
+    const m = Math.max(0, ...Object.values(c.docs).map(d => +d.agg || 0)); c.ultimo = Math.max(c.ultimo || 0, m || Date.now() - 86400e3 * 3650);
+    if (!(s.metadata && s.metadata.fromCache)) idb.set(k, c);
+    aggiorna(Object.values(c.docs));
+  }, () => {}));
+}
+/* storico delle prenotazioni più vecchie di 90 giorni: salvato sul dispositivo, si scarica solo il tratto nuovo */
+async function caricaStorico(forza) {
+  const k = chiaveC('storicoP'), t = taglioP(); let c = forza ? null : await idb.get(k);
+  try {
+    if (!c) { const s = await getDocs(query(colP, where('data', '<', t))); c = { fino: t, docs: s.docs.map(d => d.data()) }; }
+    else if (c.fino < t) { const s = await getDocs(query(colP, where('data', '>=', c.fino), where('data', '<', t))); const ids = new Set(s.docs.map(d => d.id)); c = { fino: t, docs: c.docs.filter(b => !ids.has(b.id)).concat(s.docs.map(d => d.data())) }; }
+    idb.set(k, c);
+  } catch (e) { if (!c) return; }
+  PS = c.docs;
+}
+/* gli orari occupati passati non servono più: una volta al giorno si cancellano quelli più vecchi di 30 giorni */
+async function pulisciBusy() {
+  try { if (localStorage.getItem('pulisciBusy') === iso(new Date())) return; localStorage.setItem('pulisciBusy', iso(new Date())); } catch (e) {}
+  try { const s = await getDocs(query(colB, where('data', '<', giorniFa(30)), limit(400))); if (!s.size) return; const w = writeBatch(db); s.docs.forEach(d => w.delete(d.ref)); await w.commit(); } catch (e) {}
+}
+/* se qualcosa sembra non aggiornato: svuota i dati salvati sul dispositivo e ricarica tutto */
+async function ricaricaTutto() { await idb.svuota(); try { localStorage.removeItem('pulisciBusy'); } catch (e) {} location.reload(); }
