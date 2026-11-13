@@ -44,6 +44,10 @@ service cloud.firestore {
         allow read: if true;
         allow write: if staffSalone();
       }
+      // rubrica del salone (clienti importati o inseriti dal salone): solo il titolare
+      match /rubrica/{id} {
+        allow read, write: if staffSalone();
+      }
       // dati del cliente (nome, telefono, foto): li modifica solo lui, il titolare li legge
       match /clienti/{uid} {
         allow read: if staffSalone() || (request.auth != null && request.auth.uid == uid);

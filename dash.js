@@ -6,7 +6,7 @@ import { getFirestore, doc, getDoc, setDoc, deleteDoc, collection, onSnapshot, w
 const SALONE = 'radici';
 const fbApp = initializeApp({ apiKey: 'AIzaSyCUhd6pXSheUQ6gPhT5OfvprM5dYI2uxz4', authDomain: 'radici-app.firebaseapp.com', projectId: 'radici-app', storageBucket: 'radici-app.firebasestorage.app', messagingSenderId: '602201707324', appId: '1:602201707324:web:88d8681280de279b81c439' });
 const auth = getAuth(fbApp), db = getFirestore(fbApp);
-const SAL = doc(db, 'saloni', SALONE), colP = collection(db, 'saloni', SALONE, 'prenotazioni'), colB = collection(db, 'saloni', SALONE, 'busy'), colC = collection(db, 'saloni', SALONE, 'clienti'), colA = collection(db, 'saloni', SALONE, 'avvisi');
+const SAL = doc(db, 'saloni', SALONE), colP = collection(db, 'saloni', SALONE, 'prenotazioni'), colB = collection(db, 'saloni', SALONE, 'busy'), colC = collection(db, 'saloni', SALONE, 'clienti'), colA = collection(db, 'saloni', SALONE, 'avvisi'), colR = collection(db, 'saloni', SALONE, 'rubrica');
 
 const $ = id => document.getElementById(id);
 const esc = t => String(t ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -30,7 +30,7 @@ function conferma(t, p, ok = 'Sì', no = 'No') { return new Promise(r => { fines
 const numWa = t => { const d = String(t).replace(/\D/g, ''); return String(t).trim().startsWith('+') || d.startsWith('39') && d.length > 10 ? d : '39' + d; };
 
 /* ---------- stato ---------- */
-let C = cp(window.RADICI_SEED), D = null, sporco = false, P = [], CL = [], BK = [], AV = [], vista = 'agenda', giorno = iso(new Date()), filtroCl = '', soloRitardatari = false;
+let C = cp(window.RADICI_SEED), D = null, sporco = false, P = [], CL = [], BK = [], AV = [], RB = [], vista = 'agenda', giorno = iso(new Date()), filtroCl = '', soloRitardatari = false;
 const unsub = [];
 
 /* ---------- accesso ---------- */
@@ -47,6 +47,7 @@ onAuthStateChanged(auth, async u => {
   unsub.push(onSnapshot(colP, s => { P = s.docs.map(d => d.data()); ridisegna(); collega(); }));
   unsub.push(onSnapshot(colC, s => { CL = s.docs.map(d => Object.assign({ uid: d.id }, d.data())); ridisegna(); collega(); }));
   unsub.push(onSnapshot(colB, s => { BK = s.docs.map(d => Object.assign({ id: d.id }, d.data())); if (vista === 'agenda' && $('mod').hidden) render(); }));
+  unsub.push(onSnapshot(colR, s => { RB = s.docs.map(d => Object.assign({ id: d.id }, d.data())); ridisegna(); }, () => {}));
   unsub.push(onSnapshot(colA, s => { AV = s.docs.map(d => d.data()); if (vista === 'comunicazioni') render(); }, () => {}));
 });
 $('lIn').onclick = async () => { $('lErr').textContent = ''; try { await signInWithEmailAndPassword(auth, $('lMail').value.trim(), $('lPass').value); } catch (e) { $('lErr').textContent = e.code === 'auth/too-many-requests' ? 'Troppi tentativi, riprova più tardi.' : 'Email o password non corretti.'; } };
@@ -193,7 +194,7 @@ const telN = t => String(t || '').replace(/\D/g, '').replace(/^(0039|39)(?=\d{9,
 function nuovo(pre = {}) {
   const vis = C.servizi.filter(s => s.visibile !== false); let scelto = null;
   finestra(`<h3>Nuovo appuntamento</h3>
-   <label>Cliente registrato nell’app (facoltativo)<input id="nCerca" placeholder="Cerca per nome o telefono" autocomplete="off"></label>
+   <label>Cerca cliente (facoltativo)<input id="nCerca" placeholder="Cerca per nome o telefono" autocomplete="off"></label>
    <div id="nRis" class="ris"></div><div id="nSel"></div>
    <div class="grid2" style="margin-top:10px"><label>Nome<input id="nNome"></label><label>Cognome<input id="nCogn"></label></div>
    <label style="margin-top:10px">Telefono<input id="nTel" type="tel"></label>
@@ -208,10 +209,11 @@ function nuovo(pre = {}) {
   };
   $('nCerca').oninput = e => {
     const q = e.target.value.trim().toLowerCase();
-    const l = q.length < 2 ? [] : CL.filter(c => ((c.nome || '') + ' ' + (c.cogn || '') + ' ' + (c.tel || '')).toLowerCase().includes(q) || (telN(q) && telN(c.tel).includes(telN(q)))).slice(0, 6);
-    $('nRis').innerHTML = l.map(c => `<button class="ri" data-u="${esc(c.uid)}">${avatar(c)}<span><b>${esc(c.nome || '')} ${esc(c.cogn || '')}</b><small>${esc(c.tel || c.mail || '')}</small></span></button>`).join('') || (q.length >= 2 ? '<p class="hint" style="margin:4px 0">Nessun cliente registrato con questo nome: compila i campi qui sotto.</p>' : '');
+    const tutti = CL.map(c => Object.assign({ k: 'u:' + c.uid }, c)).concat(RB.filter(r => !accountDi(r)).map(r => Object.assign({ k: 'r:' + r.id }, r)));
+    const l = q.length < 2 ? [] : tutti.filter(c => ((c.nome || '') + ' ' + (c.cogn || '') + ' ' + (c.tel || '')).toLowerCase().includes(q) || (telN(q) && telN(c.tel).includes(telN(q)))).slice(0, 6);
+    $('nRis').innerHTML = l.map(c => `<button class="ri" data-u="${esc(c.k)}">${avatar(c)}<span><b>${esc(c.nome || '')} ${esc(c.cogn || '')}${c.uid ? ' <span class="tag">app</span>' : ''}</b><small>${esc(c.tel || c.mail || '')}</small></span></button>`).join('') || (q.length >= 2 ? '<p class="hint" style="margin:4px 0">Nessun cliente con questo nome: compila i campi qui sotto.</p>' : '');
     $('nRis').querySelectorAll('[data-u]').forEach(b => b.onclick = () => {
-      scelto = CL.find(c => c.uid === b.dataset.u); $('nNome').value = scelto.nome || ''; $('nCogn').value = scelto.cogn || ''; $('nTel').value = scelto.tel || '';
+      const c = tutti.find(x => x.k === b.dataset.u); scelto = c.uid ? c : null; $('nNome').value = c.nome || ''; $('nCogn').value = c.cogn || ''; $('nTel').value = c.tel || '';
       $('nRis').innerHTML = ''; $('nCerca').value = ''; mostraSel();
     });
   };
@@ -243,21 +245,106 @@ async function collega() {
   collegando = true; try { await w.commit(); toast(n === 1 ? '1 appuntamento collegato all’app del cliente' : n + ' appuntamenti collegati all’app dei clienti'); } catch (e) {} collegando = false;
 }
 
-/* ---------- CLIENTI ---------- */
+/* ---------- CLIENTI: account dell'app + rubrica del salone (importata o inserita a mano) ---------- */
+const mailN = m => String(m || '').trim().toLowerCase();
+/* Un cliente della rubrica corrisponde a un account dell'app se ha lo stesso telefono o la stessa email */
+const accountDi = r => CL.find(c => (telN(r.tel) && telN(c.tel) === telN(r.tel)) || (mailN(r.mail) && mailN(c.mail) === mailN(r.mail)));
 function elencoClienti() {
   const per = {}; P.filter(b => b.stato !== 'annullata').forEach(b => { const k = b.uid !== 'manuale' ? b.uid : 'm:' + (telN(b.tel) || b.nome.toLowerCase()); (per[k] = per[k] || []).push(b); });
-  const oggiK = iso(new Date());
-  const L = Object.entries(per).map(([k, bs]) => { const c = CL.find(x => x.uid === k) || {}; const pass = bs.filter(b => b.data <= oggiK).sort((a, b) => b.data.localeCompare(a.data)); const b0 = bs[0];
-    return { app: !k.startsWith('m:'), foto: c.foto || '', nome: ((c.nome || b0.nome) + ' ' + (c.cogn || b0.cogn || '')).trim(), tel: c.tel || b0.tel, visite: pass.length, ultima: pass[0] ? pass[0].data : '', prossima: bs.filter(b => b.data > oggiK).map(b => b.data).sort()[0] || '' }; });
-  CL.forEach(c => { if (!per[c.uid]) L.push({ app: true, foto: c.foto || '', nome: ((c.nome || '') + ' ' + (c.cogn || '')).trim() || c.mail || 'Cliente', tel: c.tel, visite: 0, ultima: '', prossima: '' }); });
+  const oggiK = iso(new Date()), usati = new Set();
+  const riga = (base, bs) => { bs = bs || []; const pass = bs.filter(b => b.data <= oggiK).sort((a, b) => b.data.localeCompare(a.data));
+    return Object.assign(base, { visite: pass.length, ultima: pass[0] ? pass[0].data : '', prossima: bs.filter(b => b.data > oggiK).map(b => b.data).sort()[0] || '' }); };
+  const L = [];
+  CL.forEach(c => { const bs = (per[c.uid] || []).concat(per['m:' + telN(c.tel)] || []); usati.add(c.uid); if (telN(c.tel)) usati.add('m:' + telN(c.tel));
+    const r = RB.find(x => accountDi(x) === c);
+    L.push(riga({ app: true, foto: c.foto || '', nome: ((c.nome || '') + ' ' + (c.cogn || '')).trim() || c.mail || 'Cliente', tel: c.tel || (r && r.tel) || '', mail: c.mail || '', dal: r && r.dal }, bs)); });
+  RB.forEach(r => { if (accountDi(r)) return; const k = 'm:' + telN(r.tel); if (telN(r.tel)) usati.add(k);
+    L.push(riga({ app: false, rubrica: true, foto: '', nome: ((r.nome || '') + ' ' + (r.cogn || '')).trim() || r.mail || 'Cliente', tel: r.tel || '', mail: r.mail || '', dal: r.dal }, telN(r.tel) ? per[k] : [])); });
+  Object.entries(per).forEach(([k, bs]) => { if (usati.has(k)) return; const b0 = bs[0];
+    L.push(riga({ app: false, foto: '', nome: (b0.nome + ' ' + (b0.cogn || '')).trim(), tel: b0.tel, mail: b0.mail || '' }, bs)); });
   return L;
 }
+let mostraCl = 150;
 function vClienti() {
-  let L = elencoClienti().sort((a, b) => a.nome.localeCompare(b.nome));
-  if (filtroCl) L = L.filter(x => (x.nome + ' ' + x.tel).toLowerCase().includes(filtroCl.toLowerCase()));
-  $('vista').innerHTML = `<div class="bar"><input id="cQ" type="search" placeholder="Cerca per nome o telefono" value="${esc(filtroCl)}" style="max-width:340px"><span class="hint" style="margin:0">${L.length} clienti</span></div>
-   <div class="card">${L.length ? L.map(x => `<div class="li">${avatar(x)}<div class="t"><b>${esc(x.nome)}${x.app ? ' <span class="tag">app</span>' : ''}</b><small>${x.visite} visite · ultima: ${x.ultima ? esc(dataLunga(x.ultima)) : '—'}${x.prossima ? ' · prossima: ' + esc(dataLunga(x.prossima)) : ''}</small></div>${contatti(x.tel)}</div>`).join('') : '<p class="hint" style="margin:0">Nessun cliente.</p>'}</div>`;
-  $('cQ').oninput = e => { filtroCl = e.target.value; const pos = e.target.selectionStart; render(); $('cQ').focus(); $('cQ').setSelectionRange(pos, pos); };
+  $('azioni').innerHTML = '<button class="bt" id="imp">⬆ Importa da CSV</button>';
+  $('imp').onclick = importa;
+  let L = elencoClienti().sort((a, b) => a.nome.localeCompare(b.nome, 'it'));
+  if (filtroCl) { const q = filtroCl.toLowerCase(), qt = telN(filtroCl); L = L.filter(x => (x.nome + ' ' + x.mail).toLowerCase().includes(q) || (qt && telN(x.tel).includes(qt))); }
+  const nApp = L.filter(x => x.app).length, tot = L.length, vis = L.slice(0, mostraCl);
+  $('vista').innerHTML = `<div class="bar"><input id="cQ" type="search" placeholder="Cerca per nome, telefono o email" value="${esc(filtroCl)}" style="max-width:340px"><span class="hint" style="margin:0">${tot} clienti · ${nApp} con l’app</span></div>
+   <div class="card">${vis.length ? vis.map(x => `<div class="li">${avatar(x)}<div class="t"><b>${esc(x.nome)}${x.app ? ' <span class="tag">app</span>' : ''}</b><small>${x.visite} visite · ultima: ${x.ultima ? esc(dataLunga(x.ultima)) : '—'}${x.prossima ? ' · prossima: ' + esc(dataLunga(x.prossima)) : ''}${x.dal ? ' · cliente dal ' + new Date(x.dal + 'T12:00').toLocaleDateString('it-IT') : ''}</small></div>${contatti(x.tel)}</div>`).join('') : '<p class="hint" style="margin:0">Nessun cliente. Puoi importarli dal vecchio gestionale con “Importa da CSV”.</p>'}
+   ${tot > vis.length ? `<button class="bt" id="altri" style="margin-top:10px">Mostra altri ${Math.min(150, tot - vis.length)} (su ${tot - vis.length})</button>` : ''}</div>`;
+  $('cQ').oninput = e => { filtroCl = e.target.value; mostraCl = 150; const pos = e.target.selectionStart; render(); $('cQ').focus(); $('cQ').setSelectionRange(pos, pos); };
+  if ($('altri')) $('altri').onclick = () => { mostraCl += 150; render(); };
+}
+
+/* ---------- IMPORTAZIONE da CSV (es. lista clienti esportata da un altro gestionale) ---------- */
+/* Legge un CSV con ; o , come separatore, virgolette, BOM e celle Excel tipo ="+39333..." */
+function leggiCsv(testo) {
+  testo = testo.replace(/^﻿/, '');
+  const prima = testo.split(/\r?\n/)[0] || '', sep = (prima.match(/;/g) || []).length >= (prima.match(/,/g) || []).length ? ';' : ',';
+  const righe = []; let riga = [], cella = '', virg = false;
+  for (let i = 0; i < testo.length; i++) {
+    const ch = testo[i];
+    if (virg) { if (ch === '"') { if (testo[i + 1] === '"') { cella += '"'; i++; } else virg = false; } else cella += ch; }
+    else if (ch === '"') virg = true;
+    else if (ch === sep) { riga.push(cella); cella = ''; }
+    else if (ch === '\n' || ch === '\r') { if (ch === '\r' && testo[i + 1] === '\n') i++; riga.push(cella); righe.push(riga); riga = []; cella = ''; }
+    else cella += ch;
+  }
+  if (cella || riga.length) { riga.push(cella); righe.push(riga); }
+  const pulisci = v => String(v || '').trim().replace(/^="?(.*?)"?$/, '$1').trim();
+  return righe.filter(r => r.some(c => pulisci(c))).map(r => r.map(pulisci));
+}
+const CAMPI = [['nome', 'Nome', /^nome$|first ?name|^name$/i], ['cogn', 'Cognome', /cognome|last ?name|surname/i], ['tel', 'Telefono', /tel|cell|phone|mobile/i], ['mail', 'Email', /mail/i], ['dal', 'Cliente dal', /cliente dal|registraz|creat|dal$|data/i]];
+const dataIso = v => { const m = String(v || '').match(/^(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{2,4})/); if (m) { const y = m[3].length === 2 ? '20' + m[3] : m[3]; return y + '-' + p2(+m[2]) + '-' + p2(+m[1]); } return /^\d{4}-\d{2}-\d{2}/.test(v) ? v.slice(0, 10) : ''; };
+/* Doppione solo se coincidono contatto e nome: familiari con lo stesso numero restano clienti distinti */
+const idRubrica = r => ('r_' + (telN(r.tel) || mailN(r.mail).replace(/[^a-z0-9]/g, '_') || 'x') + '_' + ((r.nome || '') + '_' + (r.cogn || '')).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '_')).slice(0, 140);
+function importa() {
+  finestra(`<h3>Importa clienti da CSV</h3>
+   <p class="hint">Carica il file esportato dal vecchio gestionale (Excel → “Salva come CSV” va bene). I clienti vanno nella rubrica del salone; chi si registra poi nell’app con lo stesso telefono o la stessa email viene collegato da solo.</p>
+   <label class="bt" style="cursor:pointer;display:inline-flex">Scegli il file CSV<input type="file" id="iF" accept=".csv,text/csv,text/plain" hidden></label>
+   <div id="iPrev"></div><p class="err" id="iE"></p>
+   <div style="display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;margin-top:10px"><button class="bt" id="iNo">Chiudi</button><button class="bt pri" id="iOk" hidden>Importa</button></div>`);
+  $('iNo').onclick = chiudi;
+  let righe = [], mappa = {};
+  const anteprima = () => {
+    const h = righe[0], dati = righe.slice(1);
+    const sceltaCol = (k, t) => `<label>${t}<select data-m="${k}"><option value="">— non importare —</option>${h.map((c, i) => `<option value="${i}" ${mappa[k] === i ? 'selected' : ''}>${esc(c)}</option>`).join('')}</select></label>`;
+    const val = (r, k) => mappa[k] === undefined || mappa[k] === '' ? '' : (r[mappa[k]] || '').trim();
+    const recs = dati.map(r => ({ nome: val(r, 'nome'), cogn: val(r, 'cogn'), tel: val(r, 'tel').replace(/[^\d+]/g, ''), mail: val(r, 'mail'), dal: dataIso(val(r, 'dal')) })).filter(r => r.nome || r.cogn || r.tel || r.mail);
+    const ids = new Set(RB.map(x => x.id)), unici = new Set(recs.map(idRubrica)), nuovi = [...unici].filter(id => !ids.has(id)).length, doppi = recs.length - unici.size;
+    const senza = recs.filter(r => !telN(r.tel) && !mailN(r.mail)).length, conApp = recs.filter(r => accountDi(r)).length;
+    $('iPrev').innerHTML = `<div class="grid3" style="margin:12px 0">${CAMPI.map(([k, t]) => sceltaCol(k, t)).join('')}</div>
+      <div class="stat" style="grid-template-columns:repeat(3,minmax(0,1fr))"><div><b>${unici.size}</b><span>clienti da importare</span></div><div><b>${nuovi}</b><span>nuovi (gli altri si aggiornano)</span></div><div><b>${conApp}</b><span>già registrati nell’app</span></div></div>
+      ${doppi ? `<p class="hint">${doppi} righe ripetute nel file (stesso nome e stesso contatto): vengono importate una volta sola.</p>` : ''}
+      ${senza ? `<p class="hint">${senza} senza telefono né email: si importano lo stesso, ma non si potranno collegare all’app.</p>` : ''}
+      <div class="card" style="box-shadow:none;max-height:200px;overflow:auto"><b style="display:block;margin-bottom:6px">Anteprima</b>${recs.slice(0, 5).map(r => `<div class="li"><div class="t"><b>${esc(r.nome)} ${esc(r.cogn)}</b><small>${esc(r.tel || '—')} · ${esc(r.mail || '—')}${r.dal ? ' · dal ' + new Date(r.dal + 'T12:00').toLocaleDateString('it-IT') : ''}</small></div></div>`).join('')}</div>`;
+    $('iPrev').querySelectorAll('[data-m]').forEach(s => s.onchange = () => { mappa[s.dataset.m] = s.value === '' ? '' : +s.value; anteprima(); });
+    $('iOk').hidden = !recs.length; $('iOk').textContent = 'Importa ' + unici.size + ' clienti';
+    $('iOk').onclick = async () => {
+      $('iOk').disabled = true; $('iE').textContent = '';
+      try {
+        const ora = Date.now();
+        for (let i = 0; i < recs.length; i += 400) {
+          const w = writeBatch(db);
+          recs.slice(i, i + 400).forEach(r => { const d = { nome: r.nome, cogn: r.cogn, tel: r.tel, mail: r.mail, fonte: 'import', importato: ora }; if (r.dal) d.dal = r.dal; w.set(doc(colR, idRubrica(r)), d, { merge: true }); });
+          await w.commit(); $('iOk').textContent = 'Importati ' + Math.min(i + 400, recs.length) + ' / ' + recs.length + '…';
+        }
+        chiudi(); toast(unici.size + ' clienti importati'); vista = 'clienti'; render();
+      } catch (e) { $('iOk').disabled = false; $('iOk').textContent = 'Riprova'; $('iE').textContent = e.code === 'permission-denied' ? 'Permesso negato: aggiorna le regole di Firebase (sezione rubrica).' : 'Importazione non riuscita (' + (e.code || e.message) + ').'; }
+    };
+  };
+  $('iF').onchange = async e => {
+    const f = e.target.files[0]; if (!f) return;
+    try {
+      const buf = await f.arrayBuffer(); let t = new TextDecoder('utf-8').decode(buf); if (t.includes('�')) t = new TextDecoder('windows-1252').decode(buf);
+      righe = leggiCsv(t);
+      if (righe.length < 2) { $('iE').textContent = 'Il file sembra vuoto o non è un CSV.'; return; }
+      mappa = {}; CAMPI.forEach(([k, , re]) => { const i = righe[0].findIndex((c, j) => re.test(c) && !Object.values(mappa).includes(j)); if (i >= 0) mappa[k] = i; });
+      $('iE').textContent = ''; anteprima();
+    } catch (x) { $('iE').textContent = 'Non riesco a leggere il file.'; }
+  };
 }
 /* ---------- RITARDATARI: chi non viene da un po', dal più vecchio ---------- */
 function vRitardatari() {
