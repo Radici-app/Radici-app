@@ -58,8 +58,8 @@ $('lPass').onkeydown = e => { if (e.key === 'Enter') $('lIn').click(); };
 $('esci').onclick = () => signOut(auth);
 
 /* ---------- navigazione ---------- */
-const TITOLI = { fidelity: 'Fidelity Card', galleria: 'Galleria', agenda: 'Agenda', clienti: 'Clienti', ritardatari: 'Ritardatari', statistiche: 'Statistiche', comunicazioni: 'Comunicazioni', servizi: 'Servizi', orari: 'Orari', chiusure: 'Giorni di chiusura', staff: 'Staff', negozio: 'Negozio', regole: 'Regole di prenotazione' };
-const IMPOSTAZIONI = ['servizi', 'orari', 'chiusure', 'staff', 'negozio', 'regole'];
+const TITOLI = { notifiche: 'Notifiche push', fidelity: 'Fidelity Card', galleria: 'Galleria', agenda: 'Agenda', clienti: 'Clienti', ritardatari: 'Ritardatari', statistiche: 'Statistiche', comunicazioni: 'Comunicazioni', servizi: 'Servizi', orari: 'Orari', chiusure: 'Giorni di chiusura', staff: 'Staff', negozio: 'Negozio', regole: 'Regole di prenotazione' };
+const IMPOSTAZIONI = ['notifiche', 'servizi', 'orari', 'chiusure', 'staff', 'negozio', 'regole'];
 $('nav').querySelectorAll('[data-v]').forEach(b => b.onclick = async () => {
   if (sporco && !await conferma('Modifiche non salvate', 'Vuoi uscire senza salvare?', 'Esci senza salvare', 'Resta')) return;
   sporco = false; D = cp(C); vista = b.dataset.v; $('side').classList.remove('open'); render(); scrollTo(0, 0);
@@ -73,7 +73,7 @@ function render() {
   $('titolo').textContent = TITOLI[vista];
   $('nav').querySelectorAll('[data-v]').forEach(b => b.setAttribute('aria-current', b.dataset.v === vista));
   $('azioni').innerHTML = '';
-  ({ fidelity: vFidelity, galleria: vGalleria, agenda: vAgenda, clienti: vClienti, ritardatari: vRitardatari, statistiche: vStatistiche, comunicazioni: vComunicazioni, servizi: vServizi, orari: vOrari, chiusure: vChiusure, staff: vStaff, negozio: vNegozio, regole: vRegole })[vista]();
+  ({ notifiche: vNotifiche, fidelity: vFidelity, galleria: vGalleria, agenda: vAgenda, clienti: vClienti, ritardatari: vRitardatari, statistiche: vStatistiche, comunicazioni: vComunicazioni, servizi: vServizi, orari: vOrari, chiusure: vChiusure, staff: vStaff, negozio: vNegozio, regole: vRegole })[vista]();
   if (IMPOSTAZIONI.includes(vista) || (vista === 'fidelity' && ['impostazioni', 'regolamento'].includes(fTab))) $('vista').insertAdjacentHTML('beforeend', `<div class="salva"><span id="stato">${sporco ? 'Modifiche non salvate' : ''}</span><button class="bt" id="annulla">Annulla modifiche</button><button class="bt pri" id="salva">Salva</button></div>`);
   window.riempiIcone($('vista'));
   if ($('salva')) { $('salva').onclick = salva; $('annulla').onclick = () => { D = cp(C); sporco = false; render(); }; }
@@ -90,6 +90,9 @@ function valida(d) {
   for (const s of d.servizi) { if (!s.nome.trim()) return 'Ogni servizio deve avere un nome.'; if (!(s.durata >= 5)) return '“' + s.nome + '”: durata di almeno 5 minuti.'; }
   for (const c of d.chiusure) if (!c.da || !c.a || c.a < c.da) return 'Controlla le date delle chiusure.';
   if (!d.staff.length) return 'Serve almeno un operatore.';
+  if (d.notifiche) { const n = d.notifiche;
+    if ((n.promemoria || []).some(r => !(r.prima >= 1) || !String(r.testo).trim())) return 'Notifiche: ogni promemoria deve avere un messaggio e un anticipo.';
+    if (n.inattivi && n.inattivi.attivo && !(n.inattivi.giorni >= 15)) return 'Notifiche: i clienti inattivi vanno cercati dopo almeno 15 giorni.'; }
   if (d.fidelity) { const f = d.fidelity;
     if (!(f.validitaMesi >= 1)) return 'Fidelity Card: i punti devono valere almeno 1 mese.';
     if (f.scaglioni.some(x => !(x.da >= 0) || !(x.punti >= 0))) return 'Fidelity Card: controlla gli scaglioni (importi e punti).';
@@ -761,4 +764,50 @@ function fRegolamento() {
   ant();
   $('fReg').oninput = () => { f.regolamento = $('fReg').value; segna(); ant(); };
   $('fStd').onclick = () => { $('fReg').value = window.RADICI_SEED.regolamentoFid; f.regolamento = ''; segna(); ant(); };
+}
+
+/* ---------- NOTIFICHE PUSH: promemoria prima degli appuntamenti e altri messaggi ai clienti ---------- */
+const notD = () => { if (!D.notifiche) D.notifiche = cp(window.RADICI_SEED.notifiche); const n = D.notifiche, s = window.RADICI_SEED.notifiche; ['punti', 'inattivi', 'silenzio'].forEach(k => { if (!n[k]) n[k] = cp(s[k]); }); if (!n.promemoria) n.promemoria = []; return n; };
+const UNITA = [[1440, 'giorni'], [60, 'ore'], [1, 'minuti']];
+const unitaDi = m => UNITA.find(([u]) => m % u === 0) || UNITA[2];
+const quandoTxt = m => { const [u, t] = unitaDi(m), n = m / u; return n + ' ' + (n === 1 ? { giorni: 'giorno', ore: 'ora', minuti: 'minuto' }[t] : t) + ' prima'; };
+function esempioNotifica(prima) {
+  const d = new Date(Date.now() + (prima || 0) * 60000); d.setMinutes(prima >= 1440 ? 30 : d.getMinutes() < 30 ? 30 : 0); if (prima < 1440 && d.getMinutes() === 0) d.setHours(d.getHours() + 1);
+  const oggiK = iso(new Date()), domK = iso(new Date(Date.now() + 864e5)), k = iso(d), ora = hm(d.getHours() * 60 + d.getMinutes());
+  const quando = (k === oggiK ? 'oggi' : k === domK ? 'domani' : d.toLocaleDateString('it-IT', { weekday: 'long', day: 'numeric' })) + ' alle ' + ora;
+  const st = C.staff[0] || { nome: 'Simone' };
+  return { nome: 'Maria', quando, ora, giorno: d.toLocaleDateString('it-IT', { weekday: 'long', day: 'numeric', month: 'long' }), servizi: (C.servizi[0] || { nome: 'Taglio' }).nome, operatore: st.nome, salone: C.nome, punti: 20, saldo: 135 };
+}
+const anteprima = (titolo, testo, prima) => `<div class="nprev"><span class="nico"><svg data-i="campana"></svg></span><div><b>${esc(window.testoNotifica(titolo, esempioNotifica(prima)) || C.nome)}</b><p>${esc(window.testoNotifica(testo, esempioNotifica(prima)))}</p></div></div>`;
+function vNotifiche() {
+  const n = notD(), attivi = CL.filter(c => c.notifiche && (c.dispositivi || []).length).length;
+  const seg = '<p class="hint" style="margin:6px 0 0">Puoi usare: <b>{{nome}}</b> (nome del cliente), <b>{{quando}}</b> (es. “domani alle 15:30”), <b>{{ora}}</b>, <b>{{giorno}}</b>, <b>{{servizi}}</b>, <b>{{operatore}}</b>, <b>{{salone}}</b>.</p>';
+  $('vista').innerHTML = `<div class="card nstato"><b>📣 ${attivi} ${attivi === 1 ? 'cliente ha' : 'clienti hanno'} attivato le notifiche nell’app</b>
+     <p class="hint" style="margin:6px 0 0">Qui decidi cosa ricevono i clienti e quando. L’invio automatico parte quando attiviamo il servizio di invio (Firebase piano Blaze + Cloud Functions): fino ad allora le impostazioni restano salvate e pronte.</p></div>
+   <div class="card"><h3 style="margin:0 0 4px">Promemoria degli appuntamenti</h3><p class="hint">Quanto tempo prima dell’appuntamento arriva ogni promemoria. Puoi averne fino a 3.</p>
+     ${n.promemoria.map((r, i) => { const [u] = unitaDi(r.prima); return `<div class="nrem">
+       <div class="nrtop"><label class="sw"><input type="checkbox" data-k="notifiche.promemoria.${i}.attivo" ${r.attivo ? 'checked' : ''}> Attivo</label>
+         <div class="nquando"><input type="number" min="1" max="${u === 1440 ? 7 : u === 60 ? 72 : 600}" data-pv="${i}" value="${r.prima / u}"><select data-pu="${i}">${UNITA.map(([v, t]) => `<option value="${v}" ${v === u ? 'selected' : ''}>${t}</option>`).join('')}</select><span>prima</span></div>
+         <button class="ib no" data-ndel="${i}" title="Elimina">✕</button></div>
+       <div class="grid2"><div><label>Titolo<input data-k="notifiche.promemoria.${i}.titolo" data-nprev="${i}" maxlength="60" value="${esc(r.titolo)}"></label><label style="margin-top:8px">Messaggio<textarea data-k="notifiche.promemoria.${i}.testo" data-nprev="${i}" maxlength="240" style="min-height:76px">${esc(r.testo)}</textarea></label></div>
+       <div><span class="hint" style="display:block;margin:0 0 6px">Anteprima</span><div id="nprev_${i}">${anteprima(r.titolo, r.testo, r.prima)}</div></div></div></div>`; }).join('') || '<p class="hint">Nessun promemoria: i clienti non verranno avvisati prima dell’appuntamento.</p>'}
+     ${n.promemoria.length < 3 ? '<button class="bt sm" id="nAdd">+ Aggiungi promemoria</button>' : ''}${seg}</div>
+   <div class="card"><h3 style="margin:0 0 10px">Altri messaggi</h3>
+     <label class="sw"><input type="checkbox" data-k="notifiche.comunicazioni" ${n.comunicazioni ? 'checked' : ''}> Quando pubblichi una comunicazione, invia anche una notifica</label>
+     <div class="nsep"></div>
+     <label class="sw"><input type="checkbox" data-k="notifiche.punti.attivo" ${n.punti.attivo ? 'checked' : ''}> Avvisa il cliente quando riceve punti della Fidelity Card</label>
+     <label style="margin-top:8px">Messaggio<input data-k="notifiche.punti.testo" maxlength="160" value="${esc(n.punti.testo)}"></label><p class="hint" style="margin:4px 0 0"><b>{{punti}}</b> = punti ricevuti, <b>{{saldo}}</b> = totale.</p>
+     <div class="nsep"></div>
+     <label class="sw"><input type="checkbox" data-k="notifiche.inattivi.attivo" ${n.inattivi.attivo ? 'checked' : ''}> Scrivi ai clienti che non vengono da un po’</label>
+     <div class="grid2" style="margin-top:8px"><label>Dopo quanti giorni dall’ultima visita<input type="number" min="15" max="365" data-k="notifiche.inattivi.giorni" data-n value="${n.inattivi.giorni}"></label><span></span></div>
+     <label style="margin-top:8px">Messaggio<input data-k="notifiche.inattivi.testo" maxlength="200" value="${esc(n.inattivi.testo)}"></label><p class="hint" style="margin:4px 0 0">Arriva una volta sola, a chi non ha appuntamenti in programma.</p>
+     <div class="nsep"></div>
+     <b style="display:block;margin-bottom:6px">Orario di silenzio</b><p class="hint" style="margin:0 0 8px">In queste ore non partono messaggi (comunicazioni, punti, clienti inattivi): arrivano alla fine del silenzio. I promemoria degli appuntamenti partono sempre all’orario giusto.</p>
+     <div class="grid2" style="max-width:360px"><label>Dalle<input type="time" data-k="notifiche.silenzio.da" value="${esc(n.silenzio.da)}"></label><label>Alle<input type="time" data-k="notifiche.silenzio.a" value="${esc(n.silenzio.a)}"></label></div></div>`;
+  leggi($('vista'));
+  const minuti = i => { const v = Math.max(1, Math.round(+$('vista').querySelector(`[data-pv="${i}"]`).value || 1)), u = +$('vista').querySelector(`[data-pu="${i}"]`).value; return v * u; };
+  $('vista').querySelectorAll('[data-pv],[data-pu]').forEach(el => el.onchange = el.oninput = () => { const i = +(el.dataset.pv ?? el.dataset.pu); n.promemoria[i].prima = minuti(i); segna(); $('nprev_' + i).innerHTML = anteprima(n.promemoria[i].titolo, n.promemoria[i].testo, n.promemoria[i].prima); window.riempiIcone($('nprev_' + i)); });
+  $('vista').querySelectorAll('[data-nprev]').forEach(el => el.addEventListener('input', () => { const i = +el.dataset.nprev, r = n.promemoria[i]; $('nprev_' + i).innerHTML = anteprima(r.titolo, r.testo, r.prima); window.riempiIcone($('nprev_' + i)); }));
+  $('vista').querySelectorAll('[data-ndel]').forEach(b => b.onclick = () => { n.promemoria.splice(+b.dataset.ndel, 1); segna(); render(); });
+  if ($('nAdd')) $('nAdd').onclick = () => { n.promemoria.push({ id: nid('r'), attivo: true, prima: 180, titolo: 'Promemoria', testo: 'Ti aspettiamo {{quando}} da {{salone}}.' }); segna(); render(); };
 }
