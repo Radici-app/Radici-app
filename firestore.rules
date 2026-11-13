@@ -48,6 +48,15 @@ service cloud.firestore {
       match /rubrica/{id} {
         allow read, write: if staffSalone();
       }
+      // galleria: miniature e foto grandi, tutti le vedono, solo il titolare le gestisce
+      match /galleria/{id} {
+        allow read: if true;
+        allow write: if staffSalone();
+      }
+      match /galleriaFoto/{id} {
+        allow read: if true;
+        allow write: if staffSalone();
+      }
       // dati del cliente (nome, telefono, foto): li modifica solo lui, il titolare li legge
       match /clienti/{uid} {
         allow read: if staffSalone() || (request.auth != null && request.auth.uid == uid);

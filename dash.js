@@ -6,7 +6,7 @@ import { getFirestore, doc, getDoc, setDoc, deleteDoc, collection, onSnapshot, w
 const SALONE = 'radici';
 const fbApp = initializeApp({ apiKey: 'AIzaSyCUhd6pXSheUQ6gPhT5OfvprM5dYI2uxz4', authDomain: 'radici-app.firebaseapp.com', projectId: 'radici-app', storageBucket: 'radici-app.firebasestorage.app', messagingSenderId: '602201707324', appId: '1:602201707324:web:88d8681280de279b81c439' });
 const auth = getAuth(fbApp), db = getFirestore(fbApp);
-const SAL = doc(db, 'saloni', SALONE), colP = collection(db, 'saloni', SALONE, 'prenotazioni'), colB = collection(db, 'saloni', SALONE, 'busy'), colC = collection(db, 'saloni', SALONE, 'clienti'), colA = collection(db, 'saloni', SALONE, 'avvisi'), colR = collection(db, 'saloni', SALONE, 'rubrica');
+const SAL = doc(db, 'saloni', SALONE), colP = collection(db, 'saloni', SALONE, 'prenotazioni'), colB = collection(db, 'saloni', SALONE, 'busy'), colC = collection(db, 'saloni', SALONE, 'clienti'), colA = collection(db, 'saloni', SALONE, 'avvisi'), colR = collection(db, 'saloni', SALONE, 'rubrica'), colG = collection(db, 'saloni', SALONE, 'galleria'), colGF = collection(db, 'saloni', SALONE, 'galleriaFoto');
 
 const $ = id => document.getElementById(id);
 const esc = t => String(t ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -30,7 +30,7 @@ function conferma(t, p, ok = 'Sì', no = 'No') { return new Promise(r => { fines
 const numWa = t => { const d = String(t).replace(/\D/g, ''); return String(t).trim().startsWith('+') || d.startsWith('39') && d.length > 10 ? d : '39' + d; };
 
 /* ---------- stato ---------- */
-let C = cp(window.RADICI_SEED), D = null, sporco = false, P = [], CL = [], BK = [], AV = [], RB = [], vista = 'agenda', giorno = iso(new Date()), filtroCl = '', soloRitardatari = false;
+let C = cp(window.RADICI_SEED), D = null, sporco = false, P = [], CL = [], BK = [], AV = [], RB = [], GA = [], vista = 'agenda', giorno = iso(new Date()), filtroCl = '', soloRitardatari = false;
 const unsub = [];
 
 /* ---------- accesso ---------- */
@@ -47,6 +47,7 @@ onAuthStateChanged(auth, async u => {
   unsub.push(onSnapshot(colP, s => { P = s.docs.map(d => d.data()); ridisegna(); collega(); }));
   unsub.push(onSnapshot(colC, s => { CL = s.docs.map(d => Object.assign({ uid: d.id }, d.data())); ridisegna(); collega(); }));
   unsub.push(onSnapshot(colB, s => { BK = s.docs.map(d => Object.assign({ id: d.id }, d.data())); if (vista === 'agenda' && $('mod').hidden) render(); }));
+  unsub.push(onSnapshot(colG, s => { GA = s.docs.map(d => Object.assign({ id: d.id }, d.data())); if (vista === 'galleria' && $('mod').hidden) render(); }, () => {}));
   unsub.push(onSnapshot(colR, s => { RB = s.docs.map(d => Object.assign({ id: d.id }, d.data())); ridisegna(); }, () => {}));
   unsub.push(onSnapshot(colA, s => { AV = s.docs.map(d => d.data()); if (vista === 'comunicazioni') render(); }, () => {}));
 });
@@ -55,7 +56,7 @@ $('lPass').onkeydown = e => { if (e.key === 'Enter') $('lIn').click(); };
 $('esci').onclick = () => signOut(auth);
 
 /* ---------- navigazione ---------- */
-const TITOLI = { agenda: 'Agenda', clienti: 'Clienti', ritardatari: 'Ritardatari', statistiche: 'Statistiche', comunicazioni: 'Comunicazioni', servizi: 'Servizi', orari: 'Orari', chiusure: 'Giorni di chiusura', staff: 'Staff', negozio: 'Negozio', regole: 'Regole di prenotazione' };
+const TITOLI = { galleria: 'Galleria', agenda: 'Agenda', clienti: 'Clienti', ritardatari: 'Ritardatari', statistiche: 'Statistiche', comunicazioni: 'Comunicazioni', servizi: 'Servizi', orari: 'Orari', chiusure: 'Giorni di chiusura', staff: 'Staff', negozio: 'Negozio', regole: 'Regole di prenotazione' };
 const IMPOSTAZIONI = ['servizi', 'orari', 'chiusure', 'staff', 'negozio', 'regole'];
 $('nav').querySelectorAll('[data-v]').forEach(b => b.onclick = async () => {
   if (sporco && !await conferma('Modifiche non salvate', 'Vuoi uscire senza salvare?', 'Esci senza salvare', 'Resta')) return;
@@ -70,7 +71,7 @@ function render() {
   $('titolo').textContent = TITOLI[vista];
   $('nav').querySelectorAll('[data-v]').forEach(b => b.setAttribute('aria-current', b.dataset.v === vista));
   $('azioni').innerHTML = '';
-  ({ agenda: vAgenda, clienti: vClienti, ritardatari: vRitardatari, statistiche: vStatistiche, comunicazioni: vComunicazioni, servizi: vServizi, orari: vOrari, chiusure: vChiusure, staff: vStaff, negozio: vNegozio, regole: vRegole })[vista]();
+  ({ galleria: vGalleria, agenda: vAgenda, clienti: vClienti, ritardatari: vRitardatari, statistiche: vStatistiche, comunicazioni: vComunicazioni, servizi: vServizi, orari: vOrari, chiusure: vChiusure, staff: vStaff, negozio: vNegozio, regole: vRegole })[vista]();
   if (IMPOSTAZIONI.includes(vista)) $('vista').insertAdjacentHTML('beforeend', `<div class="salva"><span id="stato">${sporco ? 'Modifiche non salvate' : ''}</span><button class="bt" id="annulla">Annulla modifiche</button><button class="bt pri" id="salva">Salva</button></div>`);
   window.riempiIcone($('vista'));
   if ($('salva')) { $('salva').onclick = salva; $('annulla').onclick = () => { D = cp(C); sporco = false; render(); }; }
@@ -532,3 +533,45 @@ function vRegole() {
   leggi($('vista'));
 }
 window.riempiIcone(document.getElementById('nav'));
+
+/* ---------- GALLERIA: album di foto dei lavori, salvate nel database (miniatura + foto grande separata) ---------- */
+let albumSel = null;
+const albumDi = () => (C.album || []);
+function vGalleria() {
+  const A = albumDi();
+  if (!albumSel || !A.some(a => a.id === albumSel)) albumSel = A[0] ? A[0].id : null;
+  const foto = GA.filter(f => f.album === albumSel).sort((a, b) => (a.ordine || 0) - (b.ordine || 0));
+  $('vista').innerHTML = `<p class="hint">Le foto compaiono ai clienti in “Informazioni negozio”. Vengono rimpicciolite automaticamente. Pubblica foto di persone solo con il loro consenso.</p>
+   <div class="optabs gal">${A.map(a => `<button data-al="${esc(a.id)}" aria-pressed="${a.id === albumSel}">${esc(a.nome)} <small>${GA.filter(f => f.album === a.id).length}</small></button>`).join('')}<button id="alNuovo">+ Nuovo album</button></div>
+   ${albumSel ? `<div class="bar"><b style="flex:1;font:400 1.4rem 'Fraunces',serif;color:var(--head)">${esc((A.find(a => a.id === albumSel) || {}).nome || '')}</b><button class="bt sm" id="alRin">✎ Rinomina</button><button class="bt sm no" id="alDel">Elimina album</button>
+     <label class="bt pri" style="cursor:pointer">+ Aggiungi foto<input type="file" id="gFile" accept="image/*" multiple hidden></label></div>
+     <p class="hint" id="gStato"></p>
+     <div class="ggrid">${foto.map((f, i) => `<div class="gfoto"><img src="${f.mini}" alt="" loading="lazy"><div class="gaz"><button class="ib" data-gsu="${i}" title="Sposta prima" ${i ? '' : 'disabled'}>←</button><label class="ib" title="Sostituisci foto" style="cursor:pointer">🖼<input type="file" accept="image/*" data-gsost="${esc(f.id)}" hidden></label><button class="ib no" data-gdel="${esc(f.id)}" title="Elimina">🗑</button><button class="ib" data-ggiu="${i}" title="Sposta dopo" ${i < foto.length - 1 ? '' : 'disabled'}>→</button></div></div>`).join('') || '<p class="hint">Nessuna foto in questo album: tocca “Aggiungi foto”.</p>'}</div>`
+   : '<div class="card"><p class="hint" style="margin:0">Crea il primo album con “+ Nuovo album”, per esempio “Tagli uomo” o “Nail art”.</p></div>'}`;
+  const salvaAlbum = async l => { try { await setDoc(SAL, { album: l }, { merge: true }); C.album = l; if (D) D.album = cp(l); render(); } catch (e) { toast(e.code === 'permission-denied' ? 'Permesso negato: controlla le regole di Firebase.' : 'Non riuscito.'); } };
+  const chiediNome = (t, v) => new Promise(r => { finestra(`<h3>${t}</h3><label>Nome dell’album<input id="alN" maxlength="40" value="${esc(v || '')}"></label><div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px"><button class="bt" id="alX">Annulla</button><button class="bt pri" id="alOk">Salva</button></div>`); $('alN').focus(); $('alX').onclick = () => { chiudi(); r(null); }; $('alOk').onclick = () => { const n = $('alN').value.trim(); if (!n) return; chiudi(); r(n); }; });
+  $('vista').querySelectorAll('[data-al]').forEach(b => b.onclick = () => { albumSel = b.dataset.al; render(); });
+  $('alNuovo').onclick = async () => { const n = await chiediNome('Nuovo album'); if (!n) return; const id = nid('al'); albumSel = id; salvaAlbum(albumDi().concat({ id, nome: n })); };
+  if (!albumSel) return;
+  $('alRin').onclick = async () => { const a = albumDi().find(x => x.id === albumSel), n = await chiediNome('Rinomina album', a.nome); if (!n) return; salvaAlbum(albumDi().map(x => x.id === albumSel ? { id: x.id, nome: n } : x)); };
+  $('alDel').onclick = async () => {
+    if (!await conferma('Eliminare l’album?', foto.length ? 'Verranno eliminate anche le ' + foto.length + ' foto che contiene.' : '', 'Elimina')) return;
+    try { for (let i = 0; i < foto.length; i += 200) { const w = writeBatch(db); foto.slice(i, i + 200).forEach(f => { w.delete(doc(colG, f.id)); w.delete(doc(colGF, f.id)); }); await w.commit(); } } catch (e) { toast('Non riuscito.'); return; }
+    const l = albumDi().filter(x => x.id !== albumSel); albumSel = null; salvaAlbum(l);
+  };
+  const carica = async (file, id, ordine) => {
+    const [mini, img] = await Promise.all([riduci(file, 420), riduci(file, 1400)]);
+    const w = writeBatch(db); w.set(doc(colG, id), { id, album: albumSel, mini, ordine, creata: Date.now() }, { merge: true }); w.set(doc(colGF, id), { img }); await w.commit();
+  };
+  $('gFile').onchange = async e => {
+    const files = [...e.target.files]; e.target.value = ''; if (!files.length) return;
+    let ord = foto.length ? Math.max(...foto.map(f => f.ordine || 0)) + 1 : 0, ok = 0;
+    for (const f of files) { $('gStato').textContent = 'Carico la foto ' + (ok + 1) + ' di ' + files.length + '…'; try { await carica(f, nid('g'), ord++); ok++; } catch (x) { toast(x.code === 'permission-denied' ? 'Permesso negato: aggiorna le regole di Firebase.' : 'Una foto non è stata caricata.'); } }
+    $('gStato').textContent = ''; if (ok) toast(ok === 1 ? 'Foto aggiunta' : ok + ' foto aggiunte');
+  };
+  $('vista').querySelectorAll('[data-gsost]').forEach(el => el.onchange = async () => { const f = el.files[0]; if (!f) return; const v = GA.find(x => x.id === el.dataset.gsost); try { await carica(f, v.id, v.ordine || 0); toast('Foto sostituita'); } catch (x) { toast('Non riuscito.'); } });
+  $('vista').querySelectorAll('[data-gdel]').forEach(b => b.onclick = async () => { if (!await conferma('Eliminare la foto?', '', 'Elimina')) return; try { const w = writeBatch(db); w.delete(doc(colG, b.dataset.gdel)); w.delete(doc(colGF, b.dataset.gdel)); await w.commit(); } catch (e) { toast('Non riuscito.'); } });
+  const scambia = async (i, j) => { const a = foto[i], b = foto[j]; if (!a || !b) return; const w = writeBatch(db), oa = a.ordine || i, ob = b.ordine || j; w.update(doc(colG, a.id), { ordine: ob === oa ? j : ob }); w.update(doc(colG, b.id), { ordine: ob === oa ? i : oa }); try { await w.commit(); } catch (e) { toast('Non riuscito.'); } };
+  $('vista').querySelectorAll('[data-gsu]').forEach(b => b.onclick = () => scambia(+b.dataset.gsu, +b.dataset.gsu - 1));
+  $('vista').querySelectorAll('[data-ggiu]').forEach(b => b.onclick = () => scambia(+b.dataset.ggiu, +b.dataset.ggiu + 1));
+}
