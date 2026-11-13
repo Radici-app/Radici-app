@@ -150,7 +150,10 @@ main{padding:22px 28px 60px;min-width:0}
 .tab .tr b{color:var(--acc)}.tab .tr small{display:block;color:var(--mute)}
 .tab .th.st,.tab .tr.st{grid-template-columns:minmax(0,1.2fr) minmax(0,1fr) minmax(0,1.4fr)}
 .tab .tr.st{cursor:pointer}
-@media(max-width:620px){.tab .th,.tab .tr{grid-template-columns:44px minmax(0,1fr) auto}.tab .th span:last-child,.tab .tr .contatti{grid-column:1/-1}.tab .th span:last-child{display:none}.tab .tr .contatti{padding-left:54px}
+.tab .th.cla,.tab .tr.cla{grid-template-columns:44px 44px minmax(0,1fr) auto}
+.tab .tr.cla .pos{font-weight:700;color:var(--mute)}.tab .tr.cla .nv{font-weight:700;font-size:1.1rem;padding-right:4px}
+.tab .tr.cla b small{font-weight:400}
+@media(max-width:620px){.tab .th:not(.cla),.tab .tr:not(.cla){grid-template-columns:44px minmax(0,1fr) auto}.tab .th:not(.cla) span:last-child,.tab .tr .contatti{grid-column:1/-1}.tab .th:not(.cla) span:last-child{display:none}.tab .tr .contatti{padding-left:54px}
  .tab .th.st,.tab .tr.st{grid-template-columns:minmax(0,1fr) auto}.tab .tr.st small{grid-column:1/-1}.tab .th.st span:last-child{display:none}}
 .cnt{display:block;text-align:right;color:var(--mute);font-size:.8rem;margin-top:2px}
 @media(max-width:620px){

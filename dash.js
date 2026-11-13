@@ -374,12 +374,23 @@ function vStatistiche() {
    ${grafici(nel)}
    <h2 style="color:var(--acc);font-size:1.6rem;margin:6px 0 10px">${esc(sel.nome || '')}</h2>
    <div class="card tab"><div class="th st"><span>Nome cliente</span><span>Data e ora</span><span>Servizi</span></div>
-   ${L.length ? L.map(b => `<div class="tr st" data-b="${b.id}"><b>${esc(b.nome)} ${esc(b.cogn || '')}</b><span>${new Date(b.data + 'T12:00').toLocaleDateString('it-IT')}, ${hm(b.ini)}</span><small>${esc(b.servizi.map(x => x.nome).join(', '))}</small></div>`).join('') : '<p class="hint" style="margin:10px 0 0">Nessuna prenotazione in questo periodo.</p>'}</div>`;
+   ${L.length ? L.map(b => `<div class="tr st" data-b="${b.id}"><b>${esc(b.nome)} ${esc(b.cogn || '')}</b><span>${new Date(b.data + 'T12:00').toLocaleDateString('it-IT')}, ${hm(b.ini)}</span><small>${esc(b.servizi.map(x => x.nome).join(', '))}</small></div>`).join('') : '<p class="hint" style="margin:10px 0 0">Nessuna prenotazione in questo periodo.</p>'}</div>` + classifica();
   $('vista').querySelectorAll('[data-so]').forEach(b => b.onclick = () => { stOp = b.dataset.so; render(); });
   $('sDa').onchange = e => { if (e.target.value) { stDa = e.target.value; render(); } };
   $('sA').onchange = e => { if (e.target.value) { stA = e.target.value; render(); } };
   $('sQ').oninput = e => { stQ = e.target.value; const pos = e.target.selectionStart; render(); $('sQ').focus(); $('sQ').setSelectionRange(pos, pos); };
   $('vista').querySelectorAll('[data-b]').forEach(r => r.onclick = () => dettaglio(P.find(x => x.id === r.dataset.b)));
+  if ($('claAltri')) $('claAltri').onclick = () => { mostraCla += 20; render(); };
+}
+/* Classifica clienti: chi ha fatto più visite da sempre (appuntamenti già passati, non annullati) */
+let mostraCla = 20;
+function classifica() {
+  const L = elencoClienti().filter(x => x.visite > 0).sort((a, b) => b.visite - a.visite || b.ultima.localeCompare(a.ultima)), vis = L.slice(0, mostraCla);
+  return `<h2 style="color:var(--acc);font-size:1.6rem;margin:22px 0 10px">Classifica clienti</h2>
+   <p class="hint">I clienti con più visite da sempre, contando gli appuntamenti già passati e non annullati.</p>
+   <div class="card tab"><div class="th cla"><span>Pos.</span><span>Foto</span><span>Cliente</span><span>Visite</span></div>
+   ${vis.length ? vis.map((x, i) => `<div class="tr cla"><span class="pos">#${i + 1}</span>${avatar(x)}<b>${esc(x.nome)}<small>ultima: ${new Date(x.ultima + 'T12:00').toLocaleDateString('it-IT')}</small></b><span class="nv">${x.visite}</span></div>`).join('') : '<p class="hint" style="margin:10px 0 0">Ancora nessuna visita registrata.</p>'}
+   ${L.length > vis.length ? `<button class="bt" id="claAltri" style="margin-top:10px">Mostra altri (${vis.length} di ${L.length})</button>` : ''}</div>`;
 }
 /* Grafici delle statistiche: una sola serie per grafico, colore unico, valori al passaggio del dito o del mouse */
 function grafici(nel) {
