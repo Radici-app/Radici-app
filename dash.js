@@ -543,16 +543,23 @@ function vNegozio() {
 function vRegole() {
   const R = D.regole; R.ritardoGiorni = R.ritardoGiorni || 45;
   const n = (k, t, h, min, max) => `<label>${t}<input type="number" data-k="regole.${k}" data-n min="${min}" max="${max}" value="${R[k]}"><small style="display:block;margin-top:4px">${h}</small></label>`;
+  /* tempi in minuti, ore o giorni: si salva sempre in minuti */
+  const U = [[1440, 'giorni'], [60, 'ore'], [1, 'minuti']], un = m => (U.find(([u]) => m && m % u === 0) || U[2])[0];
+  const t = (k, tit, h) => `<label>${tit}<span class="tempo"><input type="number" min="0" data-tv="${k}" value="${(R[k] || 0) / un(R[k] || 0)}"><select data-tu="${k}">${U.map(([u, x]) => `<option value="${u}" ${u === un(R[k] || 0) ? 'selected' : ''}>${x}</option>`).join('')}</select><span>prima</span></span><small style="display:block;margin-top:4px">${h}</small></label>`;
   $('vista').innerHTML = `<div class="card"><div class="grid2">
    ${n('giorniMax', 'Giorni massimi di anticipo', 'Fino a quanti giorni avanti si può prenotare (max 180).', 1, 180)}
    ${n('maxServizi', 'Servizi massimi per prenotazione', 'Quanti servizi può scegliere il cliente insieme.', 1, 10)}
    ${n('passo', 'Un orario ogni (minuti)', 'Distanza tra gli orari proposti ai clienti.', 5, 120)}
-   ${n('annulloMin', 'Annullo dall’app fino a (minuti prima)', 'Es. 60: alle 9:00 si annulla entro le 8:00.', 0, 10080)}
-   ${n('anticipoMin', 'Prenotazione fino a (minuti prima)', 'Es. 20: per le 9:00 si prenota entro le 8:40.', 0, 1440)}
+   ${t('annulloMin', 'La cliente può annullare dall’app fino a', 'Es. 2 giorni: un appuntamento di venerdì si annulla entro mercoledì alla stessa ora.')}
+   ${t('anticipoMin', 'Si può prenotare fino a', 'Es. 1 ora: per le 9:00 si prenota entro le 8:00.')}
    ${n('maxAttive', 'Prenotazioni attive per cliente', 'Quante prenotazioni future può avere insieme.', 1, 20)}
    ${n('ritardoGiorni', 'Clienti “da richiamare” dopo (giorni)', 'Usato nella sezione Clienti.', 7, 365)}
    </div><label class="chk" style="margin-top:14px"><input type="checkbox" data-k="regole.tempiDinamici" ${R.tempiDinamici ? 'checked' : ''}>Tempi dinamici: la durata è la somma dei servizi scelti</label></div>`;
   leggi($('vista'));
+  $('vista').querySelectorAll('[data-tv],[data-tu]').forEach(el => el.oninput = el.onchange = () => {
+    const k = el.dataset.tv || el.dataset.tu, v = Math.max(0, Math.round(+$('vista').querySelector(`[data-tv="${k}"]`).value || 0)), u = +$('vista').querySelector(`[data-tu="${k}"]`).value;
+    R[k] = v * u; segna();
+  });
 }
 window.riempiIcone(document.getElementById('nav'));
 
