@@ -283,6 +283,7 @@ function vStatistiche() {
   $('vista').innerHTML = `<div class="optabs st">${C.staff.map(s => `<button data-so="${s.id}" aria-pressed="${s.id === stOp}"><b>${esc(s.nome)}</b><small>Prenotazioni: ${conta(s.id).length}</small></button>`).join('')}</div>
    <div class="bar"><label>Da<input type="date" id="sDa" value="${stDa}"></label><label>A<input type="date" id="sA" value="${stA}"></label><input id="sQ" type="search" placeholder="Filtra" value="${esc(stQ)}" style="max-width:260px;align-self:flex-end"></div>
    <div class="stat" style="grid-template-columns:repeat(3,minmax(0,1fr))"><div><b>${conta(stOp).length}</b><span>prenotazioni di ${esc(sel.nome || '')}</span></div><div><b>${Math.round(inc)} €</b><span>incasso indicativo</span></div><div><b>${nel.length}</b><span>prenotazioni totali del salone</span></div></div>
+   ${grafici(nel)}
    <h2 style="color:var(--acc);font-size:1.6rem;margin:6px 0 10px">${esc(sel.nome || '')}</h2>
    <div class="card tab"><div class="th st"><span>Nome cliente</span><span>Data e ora</span><span>Servizi</span></div>
    ${L.length ? L.map(b => `<div class="tr st" data-b="${b.id}"><b>${esc(b.nome)} ${esc(b.cogn || '')}</b><span>${new Date(b.data + 'T12:00').toLocaleDateString('it-IT')}, ${hm(b.ini)}</span><small>${esc(b.servizi.map(x => x.nome).join(', '))}</small></div>`).join('') : '<p class="hint" style="margin:10px 0 0">Nessuna prenotazione in questo periodo.</p>'}</div>`;
@@ -292,6 +293,30 @@ function vStatistiche() {
   $('sQ').oninput = e => { stQ = e.target.value; const pos = e.target.selectionStart; render(); $('sQ').focus(); $('sQ').setSelectionRange(pos, pos); };
   $('vista').querySelectorAll('[data-b]').forEach(r => r.onclick = () => dettaglio(P.find(x => x.id === r.dataset.b)));
 }
+/* Grafici delle statistiche: una sola serie per grafico, colore unico, valori al passaggio del dito o del mouse */
+function grafici(nel) {
+  const giorni = [], d0 = new Date(stDa + 'T12:00'), d1 = new Date(stA + 'T12:00');
+  for (let d = new Date(d0); d <= d1 && giorni.length < 93; d.setDate(d.getDate() + 1)) giorni.push(iso(d));
+  const perG = giorni.map(k => ({ k, n: nel.filter(b => b.data === k).length })), maxG = Math.max(1, ...perG.map(x => x.n));
+  const tick = n => { const p = Math.max(1, Math.ceil(n / 4)); return [0, p, 2 * p, 3 * p, 4 * p].filter(v => v <= Math.max(n, 4 * p)).slice(0, 5); };
+  const tk = tick(maxG), top = tk[tk.length - 1];
+  const col = perG.map(x => { const dt = new Date(x.k + 'T12:00'), dom = dt.getDay() === 0;
+    return `<div class="gc" data-tip="${dt.toLocaleDateString('it-IT', { weekday: 'short', day: 'numeric', month: 'short' })}: ${x.n} ${x.n === 1 ? 'prenotazione' : 'prenotazioni'}"><i style="height:${x.n / top * 100}%"></i><span class="${dt.getDate() === 1 || giorni.length <= 14 || dt.getDay() === 1 ? '' : 'nasc'}${dom ? ' dom' : ''}">${dt.getDate()}</span></div>`; }).join('');
+  const barre = (righe, unita) => { const m = Math.max(1, ...righe.map(r => r.v)); return righe.map(r => `<div class="gb" data-tip="${esc(r.l)}: ${r.v} ${unita}"><span class="gl">${esc(r.l)}</span><span class="gt"><i style="width:${r.v / m * 100}%"></i></span><b>${r.v}</b></div>`).join(''); };
+  const perOp = C.staff.map(s => ({ l: s.nome, v: nel.filter(b => b.staff === s.id).length })).sort((a, b) => b.v - a.v);
+  const sv = {}; nel.forEach(b => b.servizi.forEach(x => { sv[x.nome] = (sv[x.nome] || 0) + 1; }));
+  const topSv = Object.entries(sv).map(([l, v]) => ({ l, v })).sort((a, b) => b.v - a.v).slice(0, 6);
+  if (!nel.length) return '<div class="card"><p class="hint" style="margin:0">Nessuna prenotazione nel periodo: i grafici compariranno qui.</p></div>';
+  return `<div class="card graf"><h3>Prenotazioni al giorno</h3><p class="hint" style="margin:-6px 0 10px">Tutto il salone, dal ${new Date(stDa + 'T12:00').toLocaleDateString('it-IT')} al ${new Date(stA + 'T12:00').toLocaleDateString('it-IT')}</p>
+    <div class="gcol"><div class="gy">${tk.map(v => `<span style="bottom:${v / top * 100}%">${v}</span>`).join('')}</div><div class="garea">${tk.map(v => `<em style="bottom:${v / top * 100}%"></em>`).join('')}<div class="gbars">${col}</div></div></div></div>
+   <div class="grid2"><div class="card graf"><h3>Per operatore</h3>${barre(perOp, 'prenotazioni')}</div>
+   <div class="card graf"><h3>Servizi più richiesti</h3>${topSv.length ? barre(topSv, 'volte') : '<p class="hint">—</p>'}</div></div>`;
+}
+/* Etichetta che segue il dito o il mouse sui grafici */
+(() => { const t = document.createElement('div'); t.className = 'gtip'; t.hidden = true; document.body.appendChild(t);
+  const mostra = e => { const el = e.target.closest && e.target.closest('[data-tip]'); if (!el) { t.hidden = true; return; } t.textContent = el.dataset.tip; t.hidden = false;
+    const r = el.getBoundingClientRect(); t.style.left = Math.min(innerWidth - t.offsetWidth - 8, Math.max(8, r.left + r.width / 2 - t.offsetWidth / 2)) + 'px'; t.style.top = Math.max(8, r.top - t.offsetHeight - 8) + 'px'; };
+  document.addEventListener('pointerover', mostra); document.addEventListener('pointerdown', mostra); addEventListener('scroll', () => { t.hidden = true; }, true); })();
 /* ---------- COMUNICAZIONI: avvisi che i clienti vedono nell'app ---------- */
 function vComunicazioni() {
   const ora = Date.now(), L = AV.slice().sort((a, b) => b.creato - a.creato);
