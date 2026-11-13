@@ -140,7 +140,7 @@ function vAgenda() {
       righe += `<div class="riga" style="top:${(m - ini) * px}px;height:${10 * px}px"><button class="piu" data-piu="${m}" aria-label="Nuovo alle ${hm(m)}">+</button><button class="blk${bl ? ' on' : ''}" data-blk="${m}" aria-label="${bl ? 'Sblocca' : 'Blocca'} ${hm(m)}" title="${bl ? 'Sblocca' : 'Blocca'} la fascia">⦸</button></div>`;
     }
     const ev = L.filter(b => b.staff === s.id).map(b => { const o = origine(b);
-      return `<button class="ev${b.uid === 'manuale' ? ' man' : ''}" data-b="${b.id}" style="top:${(b.ini - ini) * px}px;height:${Math.max(22, b.dur * px - 2)}px"><span class="eh"><b>${hm(b.ini)}–${hm(b.fine)}</b><i title="${o[1]}">${o[0]}</i></span><b class="en">${esc(b.nome)} ${esc(b.cogn || '')}</b><small>${esc(b.servizi.map(x => x.nome).join(', '))}</small></button>`; }).join('');
+      return `<button class="ev${b.uid === 'manuale' ? ' man' : ''}" data-b="${b.id}" style="top:${(b.ini - ini) * px + 1}px;height:${Math.max(22, b.dur * px - 2)}px"><span class="eh"><b>${hm(b.ini)}–${hm(b.fine)}</b><i title="${o[1]}">${o[0]}</i></span><b class="en">${esc(b.nome)} ${esc(b.cogn || '')}</b><small>${esc(b.servizi.map(x => x.nome).join(', '))}</small></button>`; }).join('');
     g += `<div class="col${agOp !== 'tutti' ? ' singolo' : ''}" style="height:${h}px;background-size:100% ${(agOp === 'tutti' ? 60 : 10) * px}px;background-position:0 ${((Math.ceil(ini / 60) * 60) - ini) * px}px">${sfondo}${righe}${ev}</div>`;
   });
   const sel = C.staff.find(s => s.id === agOp);
