@@ -258,11 +258,15 @@ function vNegozio() {
   $('vista').innerHTML = `<div class="card"><h3>Dati del negozio</h3><div class="grid2"><label>Nome<input data-k="nome" value="${esc(D.nome)}"></label><label>Sottotitolo<input data-k="sottotitolo" value="${esc(D.sottotitolo || '')}"></label></div>
     <label style="margin-top:10px">Descrizione<textarea data-k="descrizione">${esc(D.descrizione || '')}</textarea></label>
     <label style="margin-top:10px">Indirizzo<input data-k="indirizzo" value="${esc(D.indirizzo || '')}" placeholder="Via, numero, CAP, città"></label>
+    <div class="grid3" style="margin-top:10px"><label>Ragione sociale<input data-k="ragioneSociale" value="${esc(D.ragioneSociale || '')}" placeholder="Es. Radici di Mario Rossi"></label><label>Partita IVA<input data-k="piva" value="${esc(D.piva || '')}"></label><label>Email del salone<input data-k="email" type="email" value="${esc(D.email || '')}"></label></div>
     <div class="grid3" style="margin-top:10px"><label>Telefono<input data-k="telefono" value="${esc(D.telefono || '')}"></label><label>WhatsApp<input data-k="whatsapp" value="${esc(D.whatsapp || '')}" placeholder="+39…"></label><label>Instagram<input data-k="instagram" value="${esc(D.instagram || '')}" placeholder="@nomeprofilo"></label></div></div>
    <div class="card"><h3>Immagini</h3>${img('logo', 'Logo', 300)}${img('cover', 'Foto di copertina', 1200)}</div>
-   <div class="card"><h3>Testi legali</h3><p class="hint">Mostrati ai clienti nel profilo. Fatteli controllare da un professionista.</p><label>Informativa privacy<textarea data-k="privacy">${esc(D.privacy || '')}</textarea></label><label style="margin-top:10px">Termini e condizioni<textarea data-k="termini">${esc(D.termini || '')}</textarea></label></div>`;
+   <div class="card"><h3>Testi legali</h3><p class="hint">Mostrati ai clienti nel profilo. Le parole tra {{ }} si riempiono da sole con i dati qui sopra e con le regole di prenotazione: {{nome}} {{ragione}} {{piva}} {{indirizzo}} {{email}} {{telefono}} {{annullo}} {{anticipo}} {{giorniMax}} {{maxAttive}} {{maxServizi}}. Le righe che iniziano con ## diventano titoli.</p>
+    <label>Informativa privacy<textarea data-k="privacy" style="min-height:260px">${esc(D.privacy || window.RADICI_SEED.privacy)}</textarea></label><button class="bt sm" data-std="privacy" style="margin-top:6px">Ripristina il testo standard</button>
+    <label style="margin-top:14px">Termini e condizioni<textarea data-k="termini" style="min-height:260px">${esc(D.termini || window.RADICI_SEED.termini)}</textarea></label><button class="bt sm" data-std="termini" style="margin-top:6px">Ripristina il testo standard</button></div>`;
   leggi($('vista'));
   $('vista').querySelectorAll('[data-img]').forEach(el => el.onchange = async () => { const f = el.files[0]; if (!f) return; D[el.dataset.img] = await riduci(f, +el.dataset.lato); segna(); render(); });
+  $('vista').querySelectorAll('[data-std]').forEach(b => b.onclick = () => { D[b.dataset.std] = window.RADICI_SEED[b.dataset.std]; segna(); render(); });
   $('vista').querySelectorAll('[data-noimg]').forEach(el => el.onclick = () => { D[el.dataset.noimg] = ''; segna(); render(); });
 }
 
