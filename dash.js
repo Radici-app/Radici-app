@@ -920,12 +920,17 @@ async function cacheSync(col, nome, leggi, aggiorna) {
   const k = chiaveC(nome), c = (await idb.get(k)) || { docs: {}, ultimo: 0 }, pieno = !c.ultimo;
   if (Object.keys(c.docs).length) aggiorna(Object.values(c.docs));
   const q = c.ultimo ? query(col, where('agg', '>', c.ultimo - 15 * 60000)) : col;
-  unsub.push(onSnapshot(q, s => {
+  let stop = null, passato = false;
+  stop = onSnapshot(q, s => {
     s.docChanges().forEach(ch => { if (ch.type === 'removed') { if (pieno) delete c.docs[ch.doc.id]; return; } const d = leggi(ch.doc); c.docs[ch.doc.id] = d; });
     const m = Math.max(0, ...Object.values(c.docs).map(d => +d.agg || 0)); c.ultimo = Math.max(c.ultimo || 0, m || Date.now() - 86400e3 * 3650);
     if (!(s.metadata && s.metadata.fromCache)) idb.set(k, c);
     aggiorna(Object.values(c.docs));
-  }, () => {}));
+    /* dopo il primo scaricamento completo non si resta in ascolto di tutta la raccolta (a ogni risveglio del dispositivo la riscaricherebbe):
+       si passa subito all'ascolto delle sole novità */
+    if (pieno && !passato && !(s.metadata && s.metadata.fromCache)) { passato = true; setTimeout(() => { if (stop) stop(); cacheSync(col, nome, leggi, aggiorna); }, 0); }
+  }, () => {});
+  unsub.push(() => { if (stop) stop(); });
 }
 /* storico delle prenotazioni più vecchie di 90 giorni: salvato sul dispositivo, si scarica solo il tratto nuovo */
 async function caricaStorico(forza) {
