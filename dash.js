@@ -798,8 +798,9 @@ const anteprima = (titolo, testo, prima) => `<div class="nprev"><span class="nic
 function vNotifiche() {
   const n = notD(), attivi = CL.filter(c => c.notifiche && (c.dispositivi || []).length).length;
   const seg = '<p class="hint" style="margin:6px 0 0">Puoi usare: <b>{{nome}}</b> (nome del cliente), <b>{{quando}}</b> (es. “domani alle 15:30”), <b>{{ora}}</b>, <b>{{giorno}}</b>, <b>{{servizi}}</b>, <b>{{operatore}}</b>, <b>{{salone}}</b>.</p>';
-  $('vista').innerHTML = `<div class="card nstato"><b>📣 ${attivi} ${attivi === 1 ? 'cliente ha' : 'clienti hanno'} attivato le notifiche nell’app</b>
-     <p class="hint" style="margin:6px 0 0">Qui decidi cosa ricevono i clienti e quando. L’invio automatico parte quando attiviamo il servizio di invio (Firebase piano Blaze + Cloud Functions): fino ad allora le impostazioni restano salvate e pronte.</p></div>
+  $('vista').innerHTML = `<div class="card nstato"><label class="sw" style="font-weight:700"><input type="checkbox" data-k="notifiche.attive" ${n.attive ? 'checked' : ''}> Invio notifiche attivo</label>
+     <p class="hint" style="margin:6px 0 0">${n.attive ? 'Acceso: nell’app compare la domanda “Vuoi un promemoria?” e il tasto Notifiche nel Profilo, e il servizio di invio manda i messaggi qui sotto.' : 'Spento: l’app non chiede le notifiche e non parte nessun messaggio. Accendilo solo quando il servizio di invio (Firebase piano Blaze + programma delle notifiche) è installato. Le impostazioni qui sotto restano salvate e pronte.'}</p>
+     <p style="margin:10px 0 0"><b>📣 ${attivi} ${attivi === 1 ? 'cliente ha' : 'clienti hanno'} attivato le notifiche nell’app</b></p></div>
    <div class="card"><h3 style="margin:0 0 4px">Promemoria degli appuntamenti</h3><p class="hint">Quanto tempo prima dell’appuntamento arriva ogni promemoria. Puoi averne fino a 3.</p>
      ${n.promemoria.map((r, i) => { const [u] = unitaDi(r.prima); return `<div class="nrem">
        <div class="nrtop"><label class="sw"><input type="checkbox" data-k="notifiche.promemoria.${i}.attivo" ${r.attivo ? 'checked' : ''}> Attivo</label>
