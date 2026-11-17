@@ -20,7 +20,20 @@ const cp = o => JSON.parse(JSON.stringify(o));
 const nid = p => p + Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
 const dataLunga = k => new Date(k + 'T12:00').toLocaleDateString('it-IT', { weekday: 'long', day: 'numeric', month: 'long' });
 const GIORNI = ['Domenica', 'Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì', 'Sabato'], ORD = [1, 2, 3, 4, 5, 6, 0];
-const ICONE = ['forbici', 'phon', 'rasoio', 'barba', 'spa', 'pennello', 'viso', 'mani', 'piedi', 'smalto', 'ciglia', 'cuore'];
+/* icone che si possono scegliere (icone.js → ICONE_SERVIZI: [nome, etichetta]) */
+const ICONE = window.ICONE_SERVIZI || ['forbici', 'phon', 'rasoio', 'barba', 'spa', 'pennello', 'viso', 'mani', 'piedi', 'smalto', 'ciglia', 'cuore'].map(n => [n, n]);
+/* griglia per scegliere l'icona: tocchi il disegno e cambia subito */
+function scegliIcona(btn) {
+  const chiave = btn.dataset.ico, parti = chiave.split('.'); let o = D; parti.slice(0, -1).forEach(k => o = o[k]);
+  const att = o[parti.at(-1)];
+  finestra(`<h3>Scegli l’icona</h3><div class="icogr">${ICONE.map(([n, t]) => `<button class="icoc${n === att ? ' sel' : ''}" data-icona="${n}"><svg data-i="${n}"></svg><span>${esc(t)}</span></button>`).join('')}</div>
+    <div style="text-align:right;margin-top:14px"><button class="bt" id="icoNo">Annulla</button></div>`);
+  $('icoNo').onclick = chiudi;
+  $('modIn').querySelectorAll('[data-icona]').forEach(b => b.onclick = () => {
+    o[parti.at(-1)] = b.dataset.icona; segna(); chiudi();
+    const sv = btn.querySelector('svg'); sv.dataset.i = b.dataset.icona; window.riempiIcone(btn);
+  });
+}
 const iniz = n => String(n || '?').trim().split(/\s+/).map(x => x[0]).slice(0, 2).join('').toUpperCase();
 const avatar = s => `<span class="av">${s && s.foto ? `<img src="${esc(s.foto)}" alt="">` : esc(iniz(s && s.nome))}</span>`;
 function toast(t) { document.querySelectorAll('.toast').forEach(x => x.remove()); const e = document.createElement('div'); e.className = 'toast'; e.textContent = t; document.body.appendChild(e); setTimeout(() => e.remove(), 2500); }
@@ -460,16 +473,16 @@ function vComunicazioni() {
 /* ---------- SERVIZI ---------- */
 function vServizi() {
   $('vista').innerHTML = `<p class="hint">Tipo di categoria: <b>base</b> (si prenota da sola), <b>aggiuntivo</b> (solo insieme a un servizio base o a una combo), <b>combo</b> (una sola per prenotazione). Il prezzo è testo libero: “20 €”, “a partire da 10 €”…</p>` +
-   D.categorie.map((c, ci) => `<div class="cat"><div class="cath"><svg data-i="${esc(c.icona)}"></svg><input data-k="categorie.${ci}.nome" value="${esc(c.nome)}">
+   D.categorie.map((c, ci) => `<div class="cat"><div class="cath"><button class="icob" data-ico="categorie.${ci}.icona" title="Cambia icona"><svg data-i="${esc(c.icona)}"></svg></button><input data-k="categorie.${ci}.nome" value="${esc(c.nome)}">
      <select data-k="categorie.${ci}.tipo">${['base', 'aggiuntivo', 'combo'].map(t => `<option ${c.tipo === t ? 'selected' : ''}>${t}</option>`).join('')}</select>
-     <select data-k="categorie.${ci}.icona">${ICONE.map(t => `<option ${c.icona === t ? 'selected' : ''}>${t}</option>`).join('')}</select>
      <button class="ib" data-c="su" data-i2="${ci}">↑</button><button class="ib" data-c="giu" data-i2="${ci}">↓</button><button class="ib no" data-c="del" data-i2="${ci}">✕</button></div>
-     ${D.servizi.map((s, si) => s.cat !== c.id ? '' : `<div class="srow${s.visibile === false ? ' nas' : ''}"><svg data-i="${esc(s.icona)}"></svg><input data-k="servizi.${si}.nome" value="${esc(s.nome)}" aria-label="Nome"><input data-k="servizi.${si}.prezzo" value="${esc(s.prezzo)}" aria-label="Prezzo"><input data-k="servizi.${si}.durata" data-n type="number" min="5" step="5" value="${s.durata}" aria-label="Minuti">
-       <div class="az"><select data-k="servizi.${si}.icona" style="width:auto;padding:6px">${ICONE.map(t => `<option ${s.icona === t ? 'selected' : ''}>${t}</option>`).join('')}</select><button class="ib" data-s="vis" data-i2="${si}" title="Visibile ai clienti">${s.visibile === false ? '◌' : '👁'}</button><button class="ib" data-s="su" data-i2="${si}">↑</button><button class="ib" data-s="giu" data-i2="${si}">↓</button><button class="ib no" data-s="del" data-i2="${si}">✕</button></div>
+     ${D.servizi.map((s, si) => s.cat !== c.id ? '' : `<div class="srow${s.visibile === false ? ' nas' : ''}"><button class="icob" data-ico="servizi.${si}.icona" title="Cambia icona"><svg data-i="${esc(s.icona)}"></svg></button><input data-k="servizi.${si}.nome" value="${esc(s.nome)}" aria-label="Nome"><input data-k="servizi.${si}.prezzo" value="${esc(s.prezzo)}" aria-label="Prezzo"><input data-k="servizi.${si}.durata" data-n type="number" min="5" step="5" value="${s.durata}" aria-label="Minuti">
+       <div class="az"><button class="ib" data-s="vis" data-i2="${si}" title="Visibile ai clienti">${s.visibile === false ? '◌' : '👁'}</button><button class="ib" data-s="su" data-i2="${si}">↑</button><button class="ib" data-s="giu" data-i2="${si}">↓</button><button class="ib no" data-s="del" data-i2="${si}">✕</button></div>
        <input class="descr" data-k="servizi.${si}.descr" value="${esc(s.descr || '')}" placeholder="Descrizione (facoltativa)"></div>`).join('')}
      <div style="padding:10px 14px"><button class="bt sm" data-c="add" data-i2="${ci}">+ Servizio</button></div></div>`).join('') +
    '<button class="bt" id="addCat">+ Nuova categoria</button>';
   leggi($('vista'));
+  $('vista').querySelectorAll('[data-ico]').forEach(b => b.onclick = () => scegliIcona(b));
   const sw = (a, i, j) => { if (j < 0 || j >= a.length) return; [a[i], a[j]] = [a[j], a[i]]; };
   $('vista').querySelectorAll('[data-c]').forEach(b => b.onclick = async () => { const i = +b.dataset.i2, c = D.categorie[i];
     if (b.dataset.c === 'su') sw(D.categorie, i, i - 1); else if (b.dataset.c === 'giu') sw(D.categorie, i, i + 1);
