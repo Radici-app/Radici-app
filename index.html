@@ -7,6 +7,11 @@
 <meta name="robots" content="noindex">
 <meta http-equiv="Cache-Control" content="no-cache">
 <link rel="icon" type="image/png" href="icon-192.png">
+<link rel="preconnect" href="https://www.gstatic.com" crossorigin>
+<link rel="modulepreload" href="dash.js">
+<link rel="modulepreload" href="https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js">
+<link rel="modulepreload" href="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js">
+<link rel="modulepreload" href="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600&family=Hanken+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -267,12 +272,9 @@ main{padding:22px 28px 60px;min-width:0}
 </div>
 <div class="modal" id="mod" hidden><div id="modIn"></div></div>
 
-<script>
-/* Carica sempre l'ultima versione dei file (GitHub Pages li tiene in memoria fino a 10 minuti) */
-(function(){var v=Date.now(),L=['seed.js','icone.js'];
- function dopo(i){if(i<L.length){var s=document.createElement('script');s.src=L[i]+'?v='+v;s.onload=function(){dopo(i+1)};document.body.appendChild(s);}
-  else{var m=document.createElement('script');m.type='module';m.src='dash.js?v='+v;document.body.appendChild(m);}}
- dopo(0);})();
-</script>
+<!-- File della pagina: si scaricano insieme (non uno dopo l'altro) e il browser li riusa; GitHub Pages li ricontrolla ogni 10 minuti -->
+<script src="seed.js"></script>
+<script src="icone.js"></script>
+<script type="module" src="dash.js"></script>
 </body>
 </html>
