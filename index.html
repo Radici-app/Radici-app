@@ -60,6 +60,8 @@ main{padding:22px 28px 60px;min-width:0}
 .salva span{flex:1;color:var(--mute);font-size:.9rem}
 /* login */
 #login{max-width:400px;margin:12vh auto;padding:0 16px}
+#sospeso:not([hidden]){min-height:100vh;display:grid;place-items:center;padding:20px}
+#egBanner{background:#b3261e;color:#fff;padding:8px 14px;border-radius:12px;margin:0 0 12px;font-size:.9rem}
 /* servizi */
 .cat{border:1.5px solid var(--line);border-radius:18px;background:var(--surf);margin-bottom:12px;overflow:hidden}
 .cath{display:flex;align-items:center;gap:10px;padding:12px 14px;background:var(--soft);flex-wrap:wrap}
@@ -239,6 +241,17 @@ main{padding:22px 28px 60px;min-width:0}
  </div>
 </div>
 <div id="attesa" style="text-align:center;padding:30vh 0;color:var(--mute)">Caricamento…</div>
+<!-- servizio sospeso da Eurogestion (es. abbonamento non pagato): lo decide solo Eurogestion dal suo pannello -->
+<div id="sospeso" hidden>
+ <div class="card" style="max-width:440px;text-align:center">
+  <h2 style="margin:0 0 10px">Servizio sospeso</h2>
+  <p>La gestione di <b id="sosNome"></b> è momentaneamente sospesa.</p>
+  <p class="hint" id="sosMotivo"></p>
+  <p>Per riattivarla contatta Eurogestion:<br><a id="sosMail" href="#"></a></p>
+  <p class="hint">L'app dei clienti continua a funzionare. I dati restano al sicuro e non vengono cancellati.</p>
+  <button class="bt" id="sosEsci" style="margin-top:10px">Esci</button>
+ </div>
+</div>
 
 <div id="app" hidden>
  <aside id="side">

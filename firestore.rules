@@ -9,58 +9,82 @@ service cloud.firestore {
         return request.auth != null &&
           exists(/databases/$(database)/documents/saloni/$(sid)/admin/$(request.auth.uid));
       }
+      // Eurogestion (pannello di controllo): documento eurogestion/<UID>, creato a mano nella console
+      function eurogestion() {
+        return request.auth != null &&
+          exists(/databases/$(database)/documents/saloni/$(sid)/eurogestion/$(request.auth.uid));
+      }
+      // servizio sospeso da Eurogestion (es. abbonamento non pagato): il titolare legge ma non modifica più nulla.
+      // I clienti dell'app non sono toccati. Eurogestion può sempre lavorare.
+      function attivo() {
+        let st = /databases/$(database)/documents/saloni/$(sid)/servizio/stato;
+        return !exists(st) || get(st).data.get('attivo', true) != false;
+      }
+      function staffScrive() {
+        return eurogestion() || (staffSalone() && attivo());
+      }
       // impostazioni del salone (servizi, orari, staff…): tutti leggono, solo il titolare modifica
       allow read: if true;
-      allow write: if staffSalone();
+      allow write: if staffScrive();
 
       // chi può entrare nella dashboard: un documento admin/<UID>, creato a mano nella console
       match /admin/{uid} {
         allow read: if request.auth != null && request.auth.uid == uid;
       }
+      // permesso Eurogestion: si crea solo dalla console, nessuno lo può scrivere dall'app o dal gestionale
+      match /eurogestion/{uid} {
+        allow read: if request.auth != null && request.auth.uid == uid;
+      }
+      // stato del servizio (attivo/sospeso): il titolare lo legge, solo Eurogestion lo cambia
+      match /servizio/{doc} {
+        allow read: if staffSalone() || eurogestion();
+        allow write: if eurogestion();
+      }
       // orari occupati, senza dati personali: servono all'app per mostrare gli orari liberi
       match /busy/{id} {
         allow read: if true;
         // il cliente crea solo l'orario occupato della sua prenotazione; il titolare anche blocchi e assenze
-        allow create: if staffSalone() || (request.auth != null
+        allow create: if staffScrive() || (request.auth != null
           && request.resource.data.keys().hasOnly(['data','ini','fine','staff']));
-        allow update: if staffSalone();
-        allow delete: if staffSalone() || (request.auth != null
+        allow update: if staffScrive();
+        allow delete: if staffScrive() || (request.auth != null
           && get(/databases/$(database)/documents/saloni/$(sid)/prenotazioni/$(id)).data.uid == request.auth.uid);
       }
       // prenotazioni: il cliente crea e vede solo le sue, può solo annullarle; il titolare gestisce tutto
       match /prenotazioni/{id} {
         allow read: if staffSalone() || (request.auth != null && resource.data.uid == request.auth.uid);
-        allow create: if staffSalone() || (request.auth != null
+        allow create: if staffScrive() || (request.auth != null
           && request.resource.data.uid == request.auth.uid
           && request.resource.data.stato == 'ok');
-        allow update: if staffSalone() || (request.auth != null
+        allow update: if staffScrive() || (request.auth != null
           && resource.data.uid == request.auth.uid
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['stato','annullataIl','annullataDa'])
           && request.resource.data.stato == 'annullata');
-        allow delete: if staffSalone();
+        allow delete: if staffScrive();
       }
       // comunicazioni del salone ai clienti: tutti leggono, solo il titolare scrive
       match /avvisi/{id} {
         allow read: if true;
-        allow write: if staffSalone();
+        allow write: if staffScrive();
       }
       // rubrica del salone (clienti importati o inseriti dal salone): solo il titolare
       match /rubrica/{id} {
-        allow read, write: if staffSalone();
+        allow read: if staffSalone();
+        allow write: if staffScrive();
       }
       // galleria: miniature e foto grandi, tutti le vedono, solo il titolare le gestisce
       match /galleria/{id} {
         allow read: if true;
-        allow write: if staffSalone();
+        allow write: if staffScrive();
       }
       match /galleriaFoto/{id} {
         allow read: if true;
-        allow write: if staffSalone();
+        allow write: if staffScrive();
       }
       // Fidelity Card: punti dei clienti. Li scrive solo il salone; ogni cliente legge solo i suoi
       match /punti/{id} {
         allow read: if staffSalone() || (request.auth != null && resource.data.uid == request.auth.uid);
-        allow write: if staffSalone();
+        allow write: if staffScrive();
       }
       // dati del cliente (nome, telefono, foto): li modifica solo lui, il titolare li legge
       match /clienti/{uid} {

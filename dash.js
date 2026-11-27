@@ -54,8 +54,13 @@ onAuthStateChanged(auth, async u => {
   let ok = false;
   if (u) { try { ok = (await getDoc(doc(db, 'saloni', SALONE, 'admin', u.uid))).exists(); } catch (e) {} }
   if (u && !ok) { $('lErr').textContent = 'Questo account non ha accesso alla gestione di ' + C.nome + '.'; await signOut(auth); return; }
-  $('login').hidden = !!u; $('app').hidden = !u;
+  /* Eurogestion: un documento eurogestion/<UID> (creato a mano nella console) dà il permesso di sospendere o riattivare il servizio */
+  EG = false;
+  if (u) { try { EG = (await getDoc(doc(db, 'saloni', SALONE, 'eurogestion', u.uid))).exists(); } catch (e) {} }
+  $('login').hidden = !!u; $('app').hidden = !u; $('sospeso').hidden = true;
   if (!u) return;
+  /* servizio sospeso da Eurogestion (es. abbonamento non pagato): il gestionale si ferma, l'app dei clienti no */
+  unsub.push(onSnapshot(doc(db, 'saloni', SALONE, 'servizio', 'stato'), s => { SERV = s.exists() ? s.data() : {}; aggSospeso(); }, () => {}));
   unsub.push(onSnapshot(SAL, s => { C = Object.assign(cp(window.RADICI_SEED), s.exists() ? window.fasceDaDb(s.data()) : {}); $('sNome').textContent = C.nome; if (!sporco) { D = cp(C); render(); } }));
   const vive = ['agenda', 'clienti', 'ritardatari', 'statistiche'], fermo = () => document.activeElement && (document.activeElement.matches('input[type=search],#cQ,#sQ') || ($('vista').contains(document.activeElement) && document.activeElement.matches('input,textarea,select')));
   const ridisegna = () => { if ((vive.includes(vista) || (vista === 'fidelity' && ['giornata', 'clienti'].includes(fTab))) && $('mod').hidden && !fermo()) render(); };
@@ -74,6 +79,21 @@ onAuthStateChanged(auth, async u => {
 $('lIn').onclick = async () => { $('lErr').textContent = ''; try { await signInWithEmailAndPassword(auth, $('lMail').value.trim(), $('lPass').value); } catch (e) { $('lErr').textContent = e.code === 'auth/too-many-requests' ? 'Troppi tentativi, riprova più tardi.' : 'Email o password non corretti.'; } };
 $('lPass').onkeydown = e => { if (e.key === 'Enter') $('lIn').click(); };
 $('esci').onclick = () => signOut(auth);
+$('sosEsci').onclick = () => signOut(auth);
+let EG = false, SERV = {};
+function aggSospeso() {
+  const sosp = SERV.attivo === false;
+  $('sospeso').hidden = !sosp || EG; $('app').hidden = sosp && !EG;
+  if (sosp && !EG) {
+    $('sosNome').textContent = C.nome || 'questo negozio';
+    $('sosMotivo').textContent = SERV.messaggio || '';
+    const m = (window.SVILUPPATORE && window.SVILUPPATORE.email) || 'info@eurogestionradix.it';
+    $('sosMail').textContent = m; $('sosMail').href = 'mailto:' + m;
+  }
+  let b = $('egBanner');
+  if (sosp && EG) { if (!b) { b = document.createElement('div'); b.id = 'egBanner'; $('vista').before(b); } b.textContent = 'Servizio SOSPESO per questo negozio: il titolare vede la schermata di sospensione. Lo vedi solo tu (Eurogestion).'; }
+  else if (b) b.remove();
+}
 
 /* ---------- navigazione ---------- */
 const TITOLI = { notifiche: 'Notifiche push', fidelity: 'Fidelity Card', galleria: 'Galleria', agenda: 'Agenda', clienti: 'Clienti', ritardatari: 'Ritardatari', statistiche: 'Statistiche', comunicazioni: 'Comunicazioni', servizi: 'Servizi', orari: 'Orari', chiusure: 'Giorni di chiusura', staff: 'Staff', negozio: 'Negozio', regole: 'Regole di prenotazione' };
