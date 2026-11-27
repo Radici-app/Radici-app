@@ -111,8 +111,8 @@ function vAbbonamento() {
   $('vista').innerHTML = !a ? `<div class="card"><p>Le informazioni sull'abbonamento non sono ancora disponibili.</p><p class="hint">Per informazioni: <a href="mailto:${esc(contattoEG())}">${esc(contattoEG())}</a></p></div>`
     : `<div class="card"><div class="li"><div class="t"><b>Stato</b></div><b style="color:${g === null ? 'inherit' : g < 0 ? '#b3261e' : g <= 7 ? '#9a6b00' : '#2e7d32'}">${g === null ? '–' : g < 0 ? 'Scaduto' : g <= 7 ? 'In scadenza' : 'Attivo'}</b></div>
        <div class="li"><div class="t"><b>Attivo fino al</b></div><b>${esc(dIt(a.scadenza))}</b></div>
-       <div class="li"><div class="t"><b>Piano</b></div><b>${esc(a.piano === 'annuale' ? 'Annuale' : 'Mensile')}${a.importo ? ' · ' + esc(euro(a.importo)) : ''}</b></div>
-       <div class="li"><div class="t"><b>Ultimo pagamento ricevuto</b></div><b>${u && u.data ? esc(dIt(u.data)) + (u.importo ? ' · ' + esc(euro(u.importo)) : '') : '–'}</b></div></div>
+       <div class="li"><div class="t"><b>Piano</b></div><b>${esc(({ annuale: 'Annuale (unica rata)', semestrale: 'Semestrale (2 rate l’anno)', mensile: 'Mensile (12 rate l’anno)' })[a.piano] || 'Mensile')}${a.importo ? ' · ' + esc(euro(a.importo)) + ' + IVA' : ''}</b></div>
+       <div class="li"><div class="t"><b>Ultimo pagamento ricevuto</b></div><b>${u && u.data ? esc(dIt(u.data)) + (u.importo ? ' · ' + esc(euro(u.importo)) + ' + IVA' : '') : '–'}</b></div></div>
        <p class="hint">L'abbonamento al servizio Radix Salon si paga a Eurogestion come concordato (non da questo gestionale). Per informazioni o per comunicare un pagamento: <a href="mailto:${esc(contattoEG())}">${esc(contattoEG())}</a>.</p>`;
 }
 function vNovita() {
