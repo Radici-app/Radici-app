@@ -1,11 +1,14 @@
 /* Radici – dashboard del titolare */
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
-import { getFirestore, initializeFirestore, persistentLocalCache, persistentMultipleTabManager, query, where, getDocs, limit, doc, getDoc, setDoc, deleteDoc, collection, onSnapshot, writeBatch, deleteField } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
+import { getFirestore, initializeFirestore, persistentLocalCache, persistentMultipleTabManager, query, where, getDocs, limit, orderBy, doc, getDoc, setDoc, deleteDoc, collection, onSnapshot, writeBatch, deleteField } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
 const SALONE = 'radici';
 const fbApp = initializeApp({ apiKey: 'AIzaSyCUhd6pXSheUQ6gPhT5OfvprM5dYI2uxz4', authDomain: 'radici-app.firebaseapp.com', projectId: 'radici-app', storageBucket: 'radici-app.firebasestorage.app', messagingSenderId: '602201707324', appId: '1:602201707324:web:88d8681280de279b81c439' });
 const auth = getAuth(fbApp);
+/* progetto di Eurogestion: da qui il gestionale legge solo le "Novità" (pubbliche, scritte da Eurogestion nel suo pannello) */
+const CENTRALE = { apiKey: 'AIzaSyDDU5scVpR5s_IXPm4C2wKBpjfyo17uAOA', authDomain: 'eurogestion-panello.firebaseapp.com', projectId: 'eurogestion-panello', storageBucket: 'eurogestion-panello.firebasestorage.app', messagingSenderId: '10428889246', appId: '1:10428889246:web:6a6163c6745bc6e554638f' };
+const dbC = getFirestore(initializeApp(CENTRALE, 'centrale'));
 let db; try { db = initializeFirestore(fbApp, { localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }) }); } catch (e) { db = getFirestore(fbApp); }
 const SAL = doc(db, 'saloni', SALONE), colP = collection(db, 'saloni', SALONE, 'prenotazioni'), colB = collection(db, 'saloni', SALONE, 'busy'), colC = collection(db, 'saloni', SALONE, 'clienti'), colA = collection(db, 'saloni', SALONE, 'avvisi'), colR = collection(db, 'saloni', SALONE, 'rubrica'), colG = collection(db, 'saloni', SALONE, 'galleria'), colGF = collection(db, 'saloni', SALONE, 'galleriaFoto'), colF = collection(db, 'saloni', SALONE, 'punti');
 
@@ -61,6 +64,9 @@ onAuthStateChanged(auth, async u => {
   if (!u) return;
   /* servizio sospeso da Eurogestion (es. abbonamento non pagato): il gestionale si ferma, l'app dei clienti no */
   unsub.push(onSnapshot(doc(db, 'saloni', SALONE, 'servizio', 'stato'), s => { SERV = s.exists() ? s.data() : {}; aggSospeso(); }, () => {}));
+  /* abbonamento (copia scritta da Eurogestion dal suo pannello) e novità di Eurogestion */
+  unsub.push(onSnapshot(doc(db, 'saloni', SALONE, 'servizio', 'abbonamento'), s => { ABB = s.exists() ? s.data() : null; aggAbb(); if (vista === 'abbonamento') render(); }, () => {}));
+  caricaNovita();
   unsub.push(onSnapshot(SAL, s => { C = Object.assign(cp(window.RADICI_SEED), s.exists() ? window.fasceDaDb(s.data()) : {}); $('sNome').textContent = C.nome; if (!sporco) { D = cp(C); render(); } }));
   const vive = ['agenda', 'clienti', 'ritardatari', 'statistiche'], fermo = () => document.activeElement && (document.activeElement.matches('input[type=search],#cQ,#sQ') || ($('vista').contains(document.activeElement) && document.activeElement.matches('input,textarea,select')));
   const ridisegna = () => { if ((vive.includes(vista) || (vista === 'fidelity' && ['giornata', 'clienti'].includes(fTab))) && $('mod').hidden && !fermo()) render(); };
@@ -80,7 +86,41 @@ $('lIn').onclick = async () => { $('lErr').textContent = ''; try { await signInW
 $('lPass').onkeydown = e => { if (e.key === 'Enter') $('lIn').click(); };
 $('esci').onclick = () => signOut(auth);
 $('sosEsci').onclick = () => signOut(auth);
-let EG = false, SERV = {};
+let EG = false, SERV = {}, ABB = null, NOV = [];
+/* ---------- abbonamento e novità di Eurogestion ---------- */
+const ggA = k => Math.round((new Date(k + 'T12:00') - new Date(iso(new Date()) + 'T12:00')) / 864e5);
+const dIt = k => k ? new Date(k + 'T12:00').toLocaleDateString('it-IT', { day: 'numeric', month: 'long', year: 'numeric' }) : '–';
+const euro = n => (Number(n) || 0).toLocaleString('it-IT', { style: 'currency', currency: 'EUR' });
+const contattoEG = () => (window.SVILUPPATORE && window.SVILUPPATORE.email) || 'info@eurogestionradix.it';
+function aggAbb() {
+  const b = $('abbBanner'); if (!b) return;
+  const g = ABB && ABB.scadenza ? ggA(ABB.scadenza) : null;
+  if (g === null || g > 7) { b.hidden = true; return; }
+  b.hidden = false; b.className = g < 0 ? 'scaduto' : 'scade';
+  b.innerHTML = (g < 0 ? `Il tuo abbonamento è <b>scaduto</b> il ${esc(dIt(ABB.scadenza))}.` : g === 0 ? 'Il tuo abbonamento <b>scade oggi</b>.' : `Il tuo abbonamento scade il <b>${esc(dIt(ABB.scadenza))}</b> (tra ${g} giorni).`) + ` <a href="#" id="abbVai">Dettagli</a>`;
+  $('abbVai').onclick = e => { e.preventDefault(); vista = 'abbonamento'; render(); };
+}
+async function caricaNovita() {
+  try { const q = await getDocs(query(collection(dbC, 'novita'), orderBy('data', 'desc'), limit(30))); NOV = q.docs.map(d => d.data()); } catch (e) { NOV = []; }
+  aggNovita(); if (vista === 'novita') render();
+}
+const novLette = () => { try { return Number(localStorage.getItem('novLette-' + SALONE)) || 0; } catch (e) { return 0; } };
+function aggNovita() { const n = NOV.filter(x => (x.data || 0) > novLette()).length, b = $('novBadge'); if (b) { b.textContent = n || ''; b.style.display = n ? '' : 'none'; } }
+function vAbbonamento() {
+  const a = ABB, g = a && a.scadenza ? ggA(a.scadenza) : null, u = a && a.ultimoPagamento;
+  $('vista').innerHTML = !a ? `<div class="card"><p>Le informazioni sull'abbonamento non sono ancora disponibili.</p><p class="hint">Per informazioni: <a href="mailto:${esc(contattoEG())}">${esc(contattoEG())}</a></p></div>`
+    : `<div class="card"><div class="li"><div class="t"><b>Stato</b></div><b style="color:${g === null ? 'inherit' : g < 0 ? '#b3261e' : g <= 7 ? '#9a6b00' : '#2e7d32'}">${g === null ? '–' : g < 0 ? 'Scaduto' : g <= 7 ? 'In scadenza' : 'Attivo'}</b></div>
+       <div class="li"><div class="t"><b>Attivo fino al</b></div><b>${esc(dIt(a.scadenza))}</b></div>
+       <div class="li"><div class="t"><b>Piano</b></div><b>${esc(a.piano === 'annuale' ? 'Annuale' : 'Mensile')}${a.importo ? ' · ' + esc(euro(a.importo)) : ''}</b></div>
+       <div class="li"><div class="t"><b>Ultimo pagamento ricevuto</b></div><b>${u && u.data ? esc(dIt(u.data)) + (u.importo ? ' · ' + esc(euro(u.importo)) : '') : '–'}</b></div></div>
+       <p class="hint">L'abbonamento al servizio Radix Salon si paga a Eurogestion come concordato (non da questo gestionale). Per informazioni o per comunicare un pagamento: <a href="mailto:${esc(contattoEG())}">${esc(contattoEG())}</a>.</p>`;
+}
+function vNovita() {
+  $('vista').innerHTML = NOV.length ? NOV.map(x => `<div class="card"><small class="hint">${esc(new Date(x.data || 0).toLocaleDateString('it-IT', { day: 'numeric', month: 'long', year: 'numeric' }))}${(x.data || 0) > novLette() ? ' <span class="tag">nuova</span>' : ''}</small><h3 style="margin:4px 0 6px">${esc(x.titolo || '')}</h3><p style="margin:0;white-space:pre-line">${esc(x.testo || '')}</p></div>`).join('')
+    : '<div class="card"><p class="hint" style="margin:0">Qui trovi le novità e i miglioramenti del gestionale comunicati da Eurogestion. Per ora non ce ne sono.</p></div>';
+  const max = Math.max(0, ...NOV.map(x => x.data || 0)); try { if (max > novLette()) localStorage.setItem('novLette-' + SALONE, String(max)); } catch (e) {}
+  setTimeout(aggNovita, 0);
+}
 function aggSospeso() {
   const sosp = SERV.attivo === false;
   $('sospeso').hidden = !sosp || EG; $('app').hidden = sosp && !EG;
@@ -96,7 +136,7 @@ function aggSospeso() {
 }
 
 /* ---------- navigazione ---------- */
-const TITOLI = { notifiche: 'Notifiche push', fidelity: 'Fidelity Card', galleria: 'Galleria', agenda: 'Agenda', clienti: 'Clienti', ritardatari: 'Ritardatari', statistiche: 'Statistiche', comunicazioni: 'Comunicazioni', servizi: 'Servizi', orari: 'Orari', chiusure: 'Giorni di chiusura', staff: 'Staff', negozio: 'Negozio', regole: 'Regole di prenotazione' };
+const TITOLI = { abbonamento: 'Abbonamento', novita: 'Novità da Eurogestion', notifiche: 'Notifiche push', fidelity: 'Fidelity Card', galleria: 'Galleria', agenda: 'Agenda', clienti: 'Clienti', ritardatari: 'Ritardatari', statistiche: 'Statistiche', comunicazioni: 'Comunicazioni', servizi: 'Servizi', orari: 'Orari', chiusure: 'Giorni di chiusura', staff: 'Staff', negozio: 'Negozio', regole: 'Regole di prenotazione' };
 const IMPOSTAZIONI = ['notifiche', 'servizi', 'orari', 'chiusure', 'staff', 'negozio', 'regole'];
 $('nav').querySelectorAll('[data-v]').forEach(b => b.onclick = async () => {
   if (sporco && !await conferma('Modifiche non salvate', 'Vuoi uscire senza salvare?', 'Esci senza salvare', 'Resta')) return;
@@ -112,7 +152,7 @@ function render() {
   $('titolo').textContent = TITOLI[vista];
   $('nav').querySelectorAll('[data-v]').forEach(b => b.setAttribute('aria-current', b.dataset.v === vista));
   $('azioni').innerHTML = '';
-  ({ notifiche: vNotifiche, fidelity: vFidelity, galleria: vGalleria, agenda: vAgenda, clienti: vClienti, ritardatari: vRitardatari, statistiche: vStatistiche, comunicazioni: vComunicazioni, servizi: vServizi, orari: vOrari, chiusure: vChiusure, staff: vStaff, negozio: vNegozio, regole: vRegole })[vista]();
+  ({ abbonamento: vAbbonamento, novita: vNovita, notifiche: vNotifiche, fidelity: vFidelity, galleria: vGalleria, agenda: vAgenda, clienti: vClienti, ritardatari: vRitardatari, statistiche: vStatistiche, comunicazioni: vComunicazioni, servizi: vServizi, orari: vOrari, chiusure: vChiusure, staff: vStaff, negozio: vNegozio, regole: vRegole })[vista]();
   if (IMPOSTAZIONI.includes(vista) || (vista === 'fidelity' && ['impostazioni', 'regolamento'].includes(fTab))) $('vista').insertAdjacentHTML('beforeend', `<div class="salva"><span id="stato">${sporco ? 'Modifiche non salvate' : ''}</span><button class="bt" id="annulla">Annulla modifiche</button><button class="bt pri" id="salva">Salva</button></div>`);
   window.riempiIcone($('vista'));
   if ($('salva')) { $('salva').onclick = salva; $('annulla').onclick = () => { D = cp(C); sporco = false; render(); }; }
